@@ -1,7 +1,8 @@
 import numpy as np
 import pylops as pl
 import random
-from scipy import ndimage
+from scipy import sparse
+from scipy import signal
 from matplotlib import pyplot as plt
 
 
@@ -43,30 +44,85 @@ def deconv(Y, kernel_size, l_i, l_f, alpha):
     return A_out, X_out
 
 
+def FISTA(lam_in, A_in, Y):
+    s, n1, n2 = np.shape(Y)
+    s, m1, m2 = np.shape(A_in)
+    Cop = pl.signalprocessing.ConvolveND(N=s*n1*n2, h=A_in, dims=(s, n1, n2), offset=(0, m1 // 2, m2 // 2), dirs=[1, 2])
+    niter = 10  # Can be different!
+    X, total_iter, cost = pl.optimization.sparsity.FISTA(Cop, Y, niter, 2 * lam_in)
+    return X
+
+
+def RTRM(lam_in, X_in, Y):
+    raise NotImplementedError
+
+
+def cost_fun(lambda_in, A, X, Y):
+    sX = sparse.csr_matrix(X)
+    s, m1, m2 = np.shape(A)
+    A_con_X = np.zeros(s, m1, m2)
+    for i in range(s):
+        A_con_X[i] = signal.convolve2d(sX.A, A[i], mode='same')
+
+    phi = 0.5 * np.sum((A_con_X - Y) ** 2) + lambda_in * np.sum(np.abs(X))
+    return phi
+
+
+def Asolve(A_in, lambda_in, Y, X=None):
+    if X is None:
+        X_in = FISTA(lambda_in, A_in, Y)
+    else:
+        X_in = X
+
+    A_out = RTRM(lambda_in, X_in, Y)
+    X_out = FISTA(lambda_in, A_in, Y)
+    raise NotImplementedError
+
+
+def Y_factory(s, Y_size, A_size, density, SNR=0):
+    n1, n2 = Y_size
+    m1, m2 = A_size
+    A = kernel_factory(s, m1, m2)
+    X = sparse.random(n1, n2, density)
+    X = X / np.sum(X)
+    Y = np.zeros([s, n1, n2])
+
+    for level in range(s):
+        Y[level] = signal.convolve2d(X.A, A[level], mode='same')
+        eta = np.var(Y[level]) / SNR
+        noise = np.random.normal(0, np.sqrt(eta), (n1, n2))
+        Y[level] += noise
+
+    return Y, A, X
+
+
 def kernel_factory(s, m1, m2):
     m_max = max(m1, m2)
     A = np.zeros([s, m_max, m_max], dtype=complex)
     symmetry = random.choice([2, 3, 4, 6])
     half_sym = np.floor(symmetry / 2).astype('int')
-    lowest_k = 1
-    highest_k = 4
+    lowest_k = 0.5
+    highest_k = 3
     k = np.zeros([s, symmetry])
     for level in range(s):
         k[level, :] = np.random.uniform(lowest_k, highest_k, symmetry)
 
     x, y = np.meshgrid(np.linspace(-1, 1, m_max), np.linspace(-1, 1, m_max))
-    dist = np.sqrt(x * x + y * y)
-    theta = np.arctan(x / y)
-    arb_angle = np.random.uniform(0, 2*np.pi)
+    # dist = np.sqrt(x * x + y * y)
+    # theta = np.arctan(x / y)
+    arb_angle = np.random.uniform(0, 2 * np.pi)
     for direction in range(symmetry):
         ang = direction * 180 / symmetry
         ang = arb_angle + ang * np.pi / 180
         r = (x * np.cos(ang) + np.sin(ang) * y)
-        A[0, :, :] += np.cos(2*np.pi * k[0, direction % half_sym] * r)
+        for i in range(s):
+            A[i, :, :] += np.cos(2 * np.pi * k[i, direction % half_sym] * r)
 
-    sigma = np.random.uniform(0.1, 0.3)
+    # Adding decay
+    sigma = np.random.uniform(0.3, 0.6)
     decay = gaussian_window(m_max, m_max, sigma)
     A = np.multiply(np.abs(A), decay)
+
     return A
 
 
@@ -75,24 +131,6 @@ def gaussian_window(n1, n2, sig=1, mu=0):
     d = np.sqrt(x * x + y * y)
     g = np.exp(-((d - mu) ** 2 / (2.0 * sig ** 2)))
     return g
-
-
-def FISTA(lam_in, A_in, X, Y):
-    s, n1, n2 = np.shape(Y)
-    Cop = pl.signalprocessing.Convolve2D(N=s * n1 * n2, h=A_in, dims=(s, n1, n2), nodir=0)
-    X_out = X
-    raise NotImplementedError
-
-
-def Asolve(A_in, lambda_in, Y, X=None):
-    s, n1, n2 = np.shape(Y)
-    if X is None:
-        X_in = np.zeros([n1, n2])
-        X_in = FISTA(lambda_in, A_in, X_in)
-    else:
-        X_in = X
-
-    raise NotImplementedError
 
 
 def center(size, A, X):
