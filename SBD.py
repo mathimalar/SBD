@@ -3,7 +3,7 @@ import pylops as pl
 import random
 from scipy import sparse
 from scipy import signal
-from matplotlib import pyplot as plt
+from scipy.optimize import minimize
 
 
 def deconv(Y, kernel_size, l_i, l_f, alpha):
@@ -44,23 +44,48 @@ def deconv(Y, kernel_size, l_i, l_f, alpha):
     return A_out, X_out
 
 
-def FISTA(lam_in, A_in, Y):
+def RTRM(lam_in, X_in, Y, A0):
+    """
+    Minimizing A for cost_fun using Riemannian Trust-Region Method (RTRM) over the sphere.
+    :param lam_in: Sparsity parameter
+    :param X_in: Activation map
+    :param Y: The data
+    :param A0: Initial guess for A
+    :return:
+    """
+
+    def constraint_function(M):
+        return 1 - np.sum(M ** 2)
+
+    constraint = {'type': 'eq', 'fun': constraint_function}
+
+    def cost(flat_A):
+        A = flat_A.reshape((s, m1, m2))
+        return cost_fun(lam_in, A, X_in, Y)
+
+    s, m1, m2 = np.shape(A0)
+    bound = [(-1, 1) for i in range(s * m1 * m2)]
+    A_out = minimize(cost, A0.flatten(), method='trust-constr', constraints=constraint, bounds=bound, tol=0.1)
+    A_out = A_out.reshape((s, m1, m2))
+    return A_out
+
+
+def FISTA(lam_in, A_in, Y, niter=1):
     s, n1, n2 = np.shape(Y)
     s, m1, m2 = np.shape(A_in)
-    Cop = pl.signalprocessing.ConvolveND(N=s*n1*n2, h=A_in, dims=(s, n1, n2), offset=(0, m1 // 2, m2 // 2), dirs=[1, 2])
-    niter = 10  # Can be different!
-    X, total_iter, cost = pl.optimization.sparsity.FISTA(Cop, Y, niter, 2 * lam_in)
-    return X
 
+    Cop = pl.signalprocessing.ConvolveND(N=s * n1 * n2, h=A_in, dims=(s, n1, n2), offset=(0, m1 // 2, m2 // 2),
+                                         dirs=[1, 2])
+    X = pl.optimization.sparsity.FISTA(Cop, Y.flatten(), niter, eps=2 * lam_in)[0]
 
-def RTRM(lam_in, X_in, Y):
-    raise NotImplementedError
+    X = X.reshape((s, n1, n2))
+    return np.median(X, axis=0)
 
 
 def cost_fun(lambda_in, A, X, Y):
     sX = sparse.csr_matrix(X)
-    s, m1, m2 = np.shape(A)
-    A_con_X = np.zeros(s, m1, m2)
+    s, n1, n2 = np.shape(Y)
+    A_con_X = np.zeros((s, n1, n2))
     for i in range(s):
         A_con_X[i] = signal.convolve2d(sX.A, A[i], mode='same')
 
@@ -74,7 +99,7 @@ def Asolve(A_in, lambda_in, Y, X=None):
     else:
         X_in = X
 
-    A_out = RTRM(lambda_in, X_in, Y)
+    A_out = RTRM(lambda_in, X_in, Y, A_in)
     X_out = FISTA(lambda_in, A_in, Y)
     raise NotImplementedError
 
@@ -118,12 +143,32 @@ def kernel_factory(s, m1, m2):
         for i in range(s):
             A[i, :, :] += np.cos(2 * np.pi * k[i, direction % half_sym] * r)
 
-    # Adding decay
+    # Adding normal decay
     sigma = np.random.uniform(0.3, 0.6)
     decay = gaussian_window(m_max, m_max, sigma)
     A = np.multiply(np.abs(A), decay)
-
+    # Normalizing:
+    A = sphere_norm_by_layer(A)
     return A
+
+
+def sphere_norm_by_layer(M):
+    """
+    Returns your matrix normalized to the unit sphere.
+    :param M: A matrix with 2 or 3 dimensions
+    :return: M normalized such that the sum of it's elements squared is one.
+    """
+    M_inner = M
+    shape = np.shape(M_inner)
+    if len(shape) == 3:
+        for i in range(shape[0]):
+            norm = np.sqrt(np.sum(M_inner[i, :, :] ** 2))
+            M_inner[i, :, :] = M_inner[i, :, :] / norm
+        return M_inner
+    if len(shape) == 2:
+        norm = np.sqrt(np.sum(M_inner ** 2))
+        M_inner = M_inner / norm
+    return M_inner
 
 
 def gaussian_window(n1, n2, sig=1, mu=0):

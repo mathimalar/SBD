@@ -42,16 +42,56 @@ c_arr, c_x = SBD.center((2, 2), arr, arr)
 levels = 2
 density = 0.005
 SNR = 2
-Y, A, X = SBD.Y_factory(levels, (185, 185), (25, 25), density, SNR)
+n1, n2 = 185, 185
+m1, m2 = 25, 25
+Y, A, X = SBD.Y_factory(levels, (n1, n2), (m1, m2), density, SNR)
+A_noise = A + np.random.normal(0, A.mean() / 2, (levels, m1, m2))
+A_noise = SBD.sphere_norm_by_layer(A_noise)
+# fig, ax = plt.subplots(levels, 2)
+# fig.suptitle('Y:')
+# for i in range(levels):
+#     ax[i, 0].imshow(A[i, :, :], cmap='hot', interpolation='nearest')
+#     ax[i, 1].imshow(Y[i, :, :], cmap='hot', interpolation='nearest')
+#     plt.colorbar()
+# plt.show()
 
-fig, ax = plt.subplots(levels, 2)
-fig.suptitle('Y:')
-for i in range(levels):
-    ax[i, 0].imshow(A[i, :, :], cmap='hot', interpolation='nearest')
-    ax[i, 1].imshow(Y[i, :, :], cmap='hot', interpolation='nearest')
+
+# Testing FISTA:
+
+X_dense = X.toarray()
+# X_new = SBD.FISTA(0.005, A_noise, Y, niter=130)
+#
+# fig, ax = plt.subplots(2, 2)
+# fig.suptitle('Activation maps')
+#
+# ax[0, 0].imshow(X_new)
+# ax[0, 1].imshow(X_dense)
+# ax[1, 0].imshow(A_noise[0])
+# ax[1, 1].imshow(A[0])
+#
+# plt.show()
+
+# error_X = 100 * (np.sum(X - X_new) / np.sum(X))
+# print(f'X relative error: {round(error_X)}%')
+
+# Testing RTRM:
+
+A_guess = SBD.RTRM(0.005, X, Y, A_noise)
+
+
+fig, ax = plt.subplots(2, 2)
+fig.suptitle('Activation maps')
+
+ax[0, 0].set_title('A_noise')
+ax[0, 0].imshow(A_noise[0])
+
+ax[0, 0].set_title('X')
+ax[0, 1].imshow(X_dense)
+
+ax[0, 0].set_title('A_guess')
+ax[1, 0].imshow(A_guess[0])
+
+ax[0, 0].set_title('A')
+ax[1, 1].imshow(A[0])
+
 plt.show()
-
-X_new, total_iter, cost = SBD.FISTA(0.001, A, Y)
-
-print(np.sum(X - X_new))
-
