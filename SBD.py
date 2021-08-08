@@ -2,8 +2,15 @@ import numpy as np
 import pylops as pl
 import random
 from scipy import sparse
+from autograd.scipy.signal import convolve as aconvolve
+from scipy.signal import convolve
 from scipy import signal
 from scipy.optimize import minimize
+import autograd.numpy as anp
+from numpy.linalg import norm
+from pymanopt.manifolds import Sphere
+from pymanopt import Problem
+from pymanopt.solvers import TrustRegions
 
 
 def deconv(Y, kernel_size, l_i, l_f, alpha):
@@ -53,20 +60,15 @@ def RTRM(lam_in, X_in, Y, A0):
     :param A0: Initial guess for A
     :return:
     """
-
-    def constraint_function(M):
-        return 1 - np.sum(M ** 2)
-
-    constraint = {'type': 'eq', 'fun': constraint_function}
-
-    def cost(flat_A):
-        A = flat_A.reshape((s, m1, m2))
-        return cost_fun(lam_in, A, X_in, Y)
-
+    # Initializing sphere manifold
     s, m1, m2 = np.shape(A0)
-    bound = [(-1, 1) for i in range(s * m1 * m2)]
-    A_out = minimize(cost, A0.flatten(), method='trust-constr', constraints=constraint, bounds=bound, tol=0.1)
-    A_out = A_out.reshape((s, m1, m2))
+    sphere = Sphere(s, m1, m2)
+
+    # Defining cost
+    def cost(A): return cost_fun(lam_in, A, X_in, Y)
+    problem = Problem(manifold=sphere, cost=cost)
+    solver = TrustRegions(maxiter=10)
+    A_out = solver.solve(problem, x=A0)
     return A_out
 
 
@@ -76,21 +78,37 @@ def FISTA(lam_in, A_in, Y, niter=1):
 
     Cop = pl.signalprocessing.ConvolveND(N=s * n1 * n2, h=A_in, dims=(s, n1, n2), offset=(0, m1 // 2, m2 // 2),
                                          dirs=[1, 2])
-    X = pl.optimization.sparsity.FISTA(Cop, Y.flatten(), niter, eps=2 * lam_in)[0]
+    X = pl.optimization.sparsity.FISTA(Cop, Y.flatten(), niter, eps=2 * lam_in, threshkind='hard')[0]
 
     X = X.reshape((s, n1, n2))
     return np.median(X, axis=0)
 
 
 def cost_fun(lambda_in, A, X, Y):
+    """
+    The cost function = 0.5|A conv X - Y|**2 + lambda * r(X)
+    :param lambda_in:
+    :param A:
+    :param X:
+    :param Y:
+    :return: A real number
+    """
     sX = sparse.csr_matrix(X)
     s, n1, n2 = np.shape(Y)
-    A_con_X = np.zeros((s, n1, n2))
-    for i in range(s):
-        A_con_X[i] = signal.convolve2d(sX.A, A[i], mode='same')
-
-    phi = 0.5 * np.sum((A_con_X - Y) ** 2) + lambda_in * np.sum(np.abs(X))
+    A_con_X = aconvolve(sX.A, A, mode='full', axes=([0, 1], [1, 2]))
+    A_con_X = crop_to_center(A_con_X, (n1, n2))
+    phi = 0.5 * anp.sum((A_con_X - Y) ** 2) + lambda_in * regulator(sX.A)
     return phi
+
+
+def regulator(X):
+    """
+    The pseudo-Huber regulator
+    :param X: 2D matrix
+    :return: A real number
+    """
+    mu = 10 ** -6  # A small positive number (chosen in the paper to be 10 ** -6)
+    return np.sum(mu ** 2 * (anp.sqrt(1 + (mu ** -2)*X) - 1))
 
 
 def Asolve(A_in, lambda_in, Y, X=None):
@@ -113,7 +131,7 @@ def Y_factory(s, Y_size, A_size, density, SNR=0):
     Y = np.zeros([s, n1, n2])
 
     for level in range(s):
-        Y[level] = signal.convolve2d(X.A, A[level], mode='same')
+        Y[level] = convolve(X.A, A[level], mode='same')
         eta = np.var(Y[level]) / SNR
         noise = np.random.normal(0, np.sqrt(eta), (n1, n2))
         Y[level] += noise
@@ -140,6 +158,7 @@ def kernel_factory(s, m1, m2):
         ang = direction * 180 / symmetry
         ang = arb_angle + ang * np.pi / 180
         r = (x * np.cos(ang) + np.sin(ang) * y)
+        phi = np.random.uniform(0, 2 * np.pi)
         for i in range(s):
             A[i, :, :] += np.cos(2 * np.pi * k[i, direction % half_sym] * r)
 
@@ -158,17 +177,9 @@ def sphere_norm_by_layer(M):
     :param M: A matrix with 2 or 3 dimensions
     :return: M normalized such that the sum of it's elements squared is one.
     """
-    M_inner = M
-    shape = np.shape(M_inner)
-    if len(shape) == 3:
-        for i in range(shape[0]):
-            norm = np.sqrt(np.sum(M_inner[i, :, :] ** 2))
-            M_inner[i, :, :] = M_inner[i, :, :] / norm
-        return M_inner
-    if len(shape) == 2:
-        norm = np.sqrt(np.sum(M_inner ** 2))
-        M_inner = M_inner / norm
-    return M_inner
+    assert len(np.shape(M)) == 3, 'The matrix does not have 3 dim'
+    M_out = M / norm(M, axis=(-2, -1))[:, None, None]
+    return M_out
 
 
 def gaussian_window(n1, n2, sig=1, mu=0):
@@ -241,6 +252,17 @@ def max_submatrix_pos(matrix, m1, m2):
 
 
 def crop_to_center(M, box_shape):
-    diff = np.subtract(np.shape(M)[1:], box_shape[1:])
-    gap = np.floor(diff / 2).astype('int')
-    return M[:, gap[0]:gap[0] + box_shape[1], gap[1]:gap[1] + box_shape[2]]
+    """
+    Crops a (s, n1, n2) matrix to a (s, m1, m2) matrix around the center
+    :param M: dim=3 matrix
+    :param box_shape: (m1, m2) touple
+    :return: dim=3 matrix
+    """
+    if len(box_shape) == 3:
+        diff = np.subtract(np.shape(M)[1:], box_shape[1:])
+        gap = diff // 2
+        return M[:, gap[0]:gap[0] + box_shape[1], gap[1]:gap[1] + box_shape[2]]
+    diff = np.subtract(np.shape(M)[1:], box_shape)
+    gap = diff // 2
+    return M[:, gap[0]:gap[0] + box_shape[0], gap[1]:gap[1] + box_shape[1]]
+
