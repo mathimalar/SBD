@@ -6,7 +6,6 @@ import pylops as pl
 import torch.nn.functional as F
 
 
-
 def side_by_side(M1, M2, title):
     fig, ax = plt.subplots(1, 2)
     fig.suptitle(title)
@@ -15,7 +14,7 @@ def side_by_side(M1, M2, title):
     plt.show()
 
 
-levels = 3
+levels = 1
 density = 0.005
 SNR = 2
 n1, n2 = 185, 185
@@ -120,7 +119,7 @@ m1, m2 = 25, 25
 # side_by_side(Y[0], A_conv_X[0], 'convolution test')
 
 # Testing RTRM:
-Y, A, X = SBD.Y_factory(levels, (n1, n2), (m1, m2), density, SNR)
+# Y, A, X = SBD.Y_factory(levels, (n1, n2), (m1, m2), density, SNR)
 # A_noise = A + np.random.normal(0, A.mean() / 2, (levels, m1, m2))
 # A_noise = SBD.sphere_norm_by_layer(A_noise)
 # A_rand = np.random.normal(0, A.mean() / 2, (levels, m1, m2))
@@ -128,9 +127,18 @@ Y, A, X = SBD.Y_factory(levels, (n1, n2), (m1, m2), density, SNR)
 # side_by_side(A_solved[0], A[0], 'RTRM result')
 
 # Testing F.conv2d:
+# Y, A, X = SBD.Y_factory(levels, (n1, n2), (m1, m2), density, SNR)
 # X_dense = X.toarray()
 # X_tensor = torch.unsqueeze(torch.tensor(X_dense), dim=0)
 # A_tensor = torch.tensor(A)
 # Y_res = F.conv2d(X_tensor, A_tensor, padding='same')
 #
 # side_by_side(Y, Y_res, 'F conv')
+
+# Testing FFT
+Y, A, X = SBD.Y_factory(levels, (n1, n2), (m1, m2), density, SNR)
+Y_fft = np.fft.fftshift(np.fft.rfft2(Y, s=Y.shape))
+A_fft = np.fft.fftshift(np.fft.rfft2(A, s=Y.shape))
+
+side_by_side(Y_fft[0].real, A_fft[0].real, 'FFTs')
+

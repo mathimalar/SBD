@@ -17,7 +17,7 @@ def save_data(number_of_samples, measurement_size, kernel_size, SNR=2, training=
     if testing and 'testing_dataset' not in files_in_folder:
         os.system("mkdir testing_dataset")
 
-    defect_density = np.random.uniform(low=-4, high=-1, size=(number_of_samples,))
+    defect_density = np.random.uniform(low=-4, high=-2, size=(number_of_samples,))
 
     E, n1, n2 = measurement_size
     for i in range(number_of_samples):

@@ -77,7 +77,7 @@ valid_dataloader = DataLoader(valid_ds, batch_size=batch_size)
 # Defining the network, optimizer and loss function.
 net = ActivationNet()
 optimizer = Adam(net.parameters(), lr=1e-4)
-loss_func = RegulatedLoss()
+loss_func = RegulatedLoss(0.01)
 
 #  Getting parameters from my last model, and loading loss.
 trained_model_path = Path('trained_model.pt', map_location=torch.device('cpu'))
