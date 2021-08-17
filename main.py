@@ -1,6 +1,10 @@
+import torch
 from matplotlib import pyplot as plt
 import numpy as np
 import SBD
+import pylops as pl
+import torch.nn.functional as F
+
 
 
 def side_by_side(M1, M2, title):
@@ -54,9 +58,9 @@ m1, m2 = 25, 25
 # plt.show()
 
 # testing Y_factory
-Y, A, X = SBD.Y_factory(levels, (n1, n2), (m1, m2), density, SNR)
-A_noise = A + np.random.normal(0, A.mean() / 2, (levels, m1, m2))
-A_noise = SBD.sphere_norm_by_layer(A_noise)
+# Y, A, X = SBD.Y_factory(levels, (n1, n2), (m1, m2), density, SNR)
+# A_noise = A + np.random.normal(0, A.mean() / 2, (levels, m1, m2))
+# A_noise = SBD.sphere_norm_by_layer(A_noise)
 #
 # fig, ax = plt.subplots(levels, 2)
 # fig.suptitle('Y:')
@@ -68,7 +72,6 @@ A_noise = SBD.sphere_norm_by_layer(A_noise)
 #         ax[i, j].set_yticks([])
 # fig.tight_layout()
 # fig.savefig('A_Y.jpg', dpi=500)
-#     plt.colorbar()
 #
 # fig2, ax2 = plt.subplots()
 # ax2.imshow(X.toarray(), cmap='hot', interpolation='nearest')
@@ -78,39 +81,56 @@ A_noise = SBD.sphere_norm_by_layer(A_noise)
 # plt.show()
 
 # Testing cost function - WORKS
-cost = SBD.cost_fun(0.05, A, X, Y)
-print(cost)
-cost = SBD.cost_fun(0.05, A_noise, X, Y)
-print(cost)
+# cost = SBD.cost_fun(0.05, A, X, Y)
+# print(cost)
+# cost = SBD.cost_fun(0.05, A_noise, X, Y)
+# print(cost)
 
 # Testing FISTA: - gives bad approximations for activation maps
-# levels = 3
-# # density = 0.005
-# # SNR = 2
-# # n1, n2 = 185, 185
-# # m1, m2 = 25, 25
-# # Y, A, X = SBD.Y_factory(levels, (n1, n2), (m1, m2), density, SNR)
-# # A_noise = A + np.random.normal(0, A.mean() / 2, (levels, m1, m2))
-# # A_noise = SBD.sphere_norm_by_layer(A_noise)
+# Y, A, X = SBD.Y_factory(levels, (n1, n2), (m1, m2), density, SNR)
+# A_noise = A + np.random.normal(0, A.mean() / 2, (levels, m1, m2))
+# A_noise = SBD.sphere_norm_by_layer(A_noise)
+#
+# X_dense = X.toarray()
+# X_new = SBD.FISTA(1e-7, A, Y, niter=1000)
+# X_new = X_new / np.sum(X_new)
+# fig, ax = plt.subplots(1, 2)
+# fig.suptitle('Activation maps')
+# max_value = np.max(X)
+# im = ax[0].imshow(X_new, vmin=0, vmax=max_value, cmap='hot')
+# ax[1].imshow(X_dense, vmin=0, vmax=max_value, cmap='hot')
+#
+# plt.show()
+#
+# error_X = np.sum(X - X_new) / np.sum(X)
+# print(f'X relative error: {round(100 * error_X)}%')
 
-X_dense = X.toarray()
-X_new = SBD.FISTA(1e-6, A, Y, niter=50)
 
-fig, ax = plt.subplots(1, 2)
-fig.suptitle('Activation maps')
-
-im = ax[0].imshow(X_new)
-ax[1].imshow(X_dense)
-fig.colorbar(im, ax=ax[0])
-
-plt.show()
-
-error_X = np.sum(X - X_new) / np.sum(X)
-print(f'X relative error: {round(100 * error_X)}%')
-
+# Testing conv operator: - works
+# Y, A, X = SBD.Y_factory(levels, (n1, n2), (m1, m2), density, SNR)
+# A_noise = A + np.random.normal(0, A.mean() / 2, (levels, m1, m2))
+# A_noise = SBD.sphere_norm_by_layer(A_noise)
+# Cop = pl.signalprocessing.ConvolveND(N=levels * n1 * n2, h=A, dims=(levels, n1, n2), offset=(0, m1 // 2, m2 // 2),
+#                                          dirs=(1, 2))
+# X_dense = X.toarray()
+# X_new = SBD.FISTA(0.5, A, Y, niter=50)
+# X_layers = np.array([X_dense for i in range(levels)])
+# A_conv_X = Cop * X_layers.flatten()
+# A_conv_X = A_conv_X.reshape((levels, n1, n2))
+# side_by_side(Y[0], A_conv_X[0], 'convolution test')
 
 # Testing RTRM:
+Y, A, X = SBD.Y_factory(levels, (n1, n2), (m1, m2), density, SNR)
+# A_noise = A + np.random.normal(0, A.mean() / 2, (levels, m1, m2))
+# A_noise = SBD.sphere_norm_by_layer(A_noise)
 # A_rand = np.random.normal(0, A.mean() / 2, (levels, m1, m2))
 # A_solved = SBD.RTRM(1e-5, X, Y, A_rand)
 # side_by_side(A_solved[0], A[0], 'RTRM result')
 
+# Testing F.conv2d:
+# X_dense = X.toarray()
+# X_tensor = torch.unsqueeze(torch.tensor(X_dense), dim=0)
+# A_tensor = torch.tensor(A)
+# Y_res = F.conv2d(X_tensor, A_tensor, padding='same')
+#
+# side_by_side(Y, Y_res, 'F conv')

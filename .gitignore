@@ -3,5 +3,6 @@ __pycache__/
 testing_dataset/
 training_dataset/
 validation_dataset/
+.idea/
 *.png
 *.jpg
