@@ -21,10 +21,11 @@ def save_data(number_of_samples, measurement_size, kernel_size, SNR=2, training=
 
     E, n1, n2 = measurement_size
     for i in range(number_of_samples):
+        sample_SNR = np.random.uniform(SNR / 2, 5*SNR)
         temp_measurement, temp_kernel, temp_activation_map = Y_factory(E, (n1, n2),
                                                                        kernel_size,
                                                                        10 ** defect_density[i],
-                                                                       SNR)
+                                                                       sample_SNR)
         if training:
             np.save(os.getcwd() + '/training_dataset/kernel_%d' % i, temp_kernel)
             np.save(os.getcwd() + '/training_dataset/measurement_%d' % i, temp_measurement)
@@ -82,7 +83,7 @@ def smooth_abs(x, k=100):
     return (2/k) * torch.log(1 + torch.exp(k*x)) - x - (2/k) * np.log(2)
 
 
-class RegulatedLoss(nn.Module):
+class ActivationLoss(nn.Module):
     def __init__(self, r=0.1):
         super().__init__()
         self.r = r
