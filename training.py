@@ -17,7 +17,7 @@ def plot_result(val_vs_epoch):
     plt.ylabel('Validation Loss')
     plt.yscale('log')
     plt.xlabel('Epoch number')
-    plt.savefig('Validation_vs_loss')
+    plt.savefig('loss_vs_epoch')
     plt.show()
 
 
@@ -68,7 +68,7 @@ def compute_loss(dataloader, network, loss_function):
 
 
 print('Loading QPI datasets.')
-batch_size = 10
+batch_size = 20
 train_ds = QPIDataSet(os.getcwd() + '/training_dataset')
 valid_ds = QPIDataSet(os.getcwd() + '/validation_dataset')
 training_dataloader = DataLoader(train_ds, batch_size=batch_size)
@@ -76,7 +76,7 @@ valid_dataloader = DataLoader(valid_ds, batch_size=batch_size)
 
 # Defining the network, optimizer and loss function.
 net = ActivationNet()
-optimizer = Adam(net.parameters(), lr=1e-4)
+optimizer = Adam(net.parameters(), lr=1e-3)
 loss_func = RegulatedLoss(0.01)
 
 #  Getting parameters from my last model, and loading loss.
@@ -101,6 +101,8 @@ n_epochs = 0
 if torch.cuda.is_available():
     net.cuda()
     print('Using GPU.')
+else:
+    print('Using CPU.')
 
 pbar = tqdm(range(n_epochs))
 
