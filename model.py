@@ -105,18 +105,22 @@ class KerNet(nn.Module):
     def __init__(self):
         super(KerNet, self).__init__()
         # Doesn't change the size of the image
-        self.filter = nn.Sequential(
-            DoubleConv(2 ** 0, 2 ** 4),
-            DoubleConv(2 ** 4, 2 ** 6),
+        self.filter_expand = nn.Sequential(
+            DoubleConv(2 ** 0, 2 ** 2),
+            DoubleConv(2 ** 2, 2 ** 4),
         )
         # EACH layer shrinks transverse size by a factor of 2.
         self.shrink = nn.Sequential(
-            Down(2 ** 6, 2 ** 4),
-            Down(2 ** 4, 2 ** 0)
+            Down(2 ** 4, 2 ** 6),
+        )
+        self.filter_flatten = nn.Sequential(
+            DoubleConv(2 ** 6, 2 ** 3),
+            DoubleConv(2 ** 3, 2 ** 0),
         )
 
     def forward(self, x):
-        filtered = self.filter(x)
-        return self.shrink(filtered)
+        expanded = self.filter_expand(x)
+        shrunk = self.shrink(expanded)
+        return self.filter_flatten(shrunk)
 
 
