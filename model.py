@@ -106,18 +106,13 @@ class KerNet(nn.Module):
         super(KerNet, self).__init__()
         # Doesn't change the size of the image
         self.filter = nn.Sequential(
-            nn.Conv2d(1, 4, kernel_size=(4, 4), stride=(1, 1), padding=(2, 2)),
-            nn.ReLU(),
-            nn.Conv2d(4, 4, kernel_size=(4, 4), stride=(1, 1), padding=(2, 2)),
-            nn.ReLU(),
-            nn.Conv2d(4, 4, kernel_size=(4, 4), stride=(1, 1), padding=(2, 2)),
-            nn.LeakyReLU(),
+            DoubleConv(2 ** 0, 2 ** 4),
+            DoubleConv(2 ** 4, 2 ** 6),
         )
         # EACH layer shrinks transverse size by a factor of 2.
         self.shrink = nn.Sequential(
-            nn.Conv2d(4, 8, kernel_size=(4, 4), stride=(2, 2), padding=1),
-            nn.ReLU(),
-            nn.Conv2d(8, 2, kernel_size=(4, 4), stride=(2, 2), padding=1),
+            Down(2 ** 6, 2 ** 4),
+            Down(2 ** 4, 2 ** 0)
         )
 
     def forward(self, x):
