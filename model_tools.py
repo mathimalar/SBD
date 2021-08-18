@@ -44,9 +44,9 @@ def save_data(number_of_samples, measurement_size, kernel_size, SNR=2, training=
 measurement_shape = (1, 200, 200)
 kernel_shape = (25, 25)
 
-save_data(3000, measurement_shape, kernel_shape, training=True)
-save_data(300, measurement_shape, kernel_shape, validation=True)
-save_data(50, measurement_shape, kernel_shape, testing=True)
+save_data(10000, measurement_shape, kernel_shape, training=True)
+save_data(1000, measurement_shape, kernel_shape, validation=True)
+save_data(100, measurement_shape, kernel_shape, testing=True)
 
 
 def tensor_to_nparray(tensor):
@@ -78,6 +78,10 @@ def plot_conv(kernel_in, activation_in, target_in):
     pass
 
 
+def smooth_abs(x, k=100):
+    return (2/k) * torch.log(1 + torch.exp(k*x)) - x - (2/k) * np.log(2)
+
+
 class RegulatedLoss(nn.Module):
     def __init__(self, r=0.1):
         super().__init__()
@@ -101,7 +105,7 @@ class RegulatedLoss(nn.Module):
         conv_target_stack = torch.stack(conv_target, dim=0).squeeze(dim=1)
         regulation_term = self.regulator(activation_pred) - self.regulator(activation)
         loss = F.huber_loss(conv_pred_stack, conv_target_stack) / 2 \
-               + self.r * torch.sqrt((regulation_term ** 2) + 1e-5)
+               + self.r * smooth_abs(regulation_term)
         loss /= activation.shape[0]
         if torch.cuda.is_available():
             return loss.cuda()
