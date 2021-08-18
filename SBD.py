@@ -11,6 +11,9 @@ from numpy.linalg import norm
 from pymanopt.manifolds import Sphere
 from pymanopt import Problem
 from pymanopt.solvers import TrustRegions
+from model import KerNet, ActivationNet
+from pathlib import Path
+import torch
 
 
 def deconv(Y, kernel_size, l_i, l_f, alpha):
@@ -67,7 +70,7 @@ def RTRM(lam_in, X_in, Y, A0):
     # Defining cost
     def cost(A): return cost_fun(lam_in, A, X_in, Y)
     problem = Problem(manifold=sphere, cost=cost)
-    solver = TrustRegions(maxiter=10)
+    solver = TrustRegions(mingradnorm=1e-10)
     A_out = solver.solve(problem, x=A0)
     return A_out
 
@@ -120,6 +123,27 @@ def Asolve(A_in, lambda_in, Y, X=None):
     A_out = RTRM(lambda_in, X_in, Y, A_in)
     X_out = FISTA(lambda_in, A_in, Y)
     raise NotImplementedError
+
+
+def ndarray_to_tensor(array):
+    tensor = torch.tensor(array).unsqueeze(dim=0)
+    return tensor
+
+
+def measurement_to_activation(measurement):
+    net = ActivationNet()
+    trained_model_path = Path('trained_model.pt', map_location=torch.device('cpu'))
+    if trained_model_path.is_file():
+        net.load_state_dict(torch.load(trained_model_path))
+        print('Loaded parameters from your trained model.')
+    else:
+        print('No trained model detected.')
+    net.eval()
+    net.cpu()
+    net.double()
+    measurement_tensor = ndarray_to_tensor(measurement)
+    activation = net(measurement_tensor)[0][0].data.numpy()
+    return activation
 
 
 def Y_factory(s, Y_size, A_size, density, SNR=0):
