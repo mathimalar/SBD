@@ -2,7 +2,7 @@ import numpy as np
 from torch.utils.data import DataLoader
 import torch
 import torch.nn as nn
-from model_tools import RegulatedLoss
+from model_tools import ActivationLoss
 from dataset import QPIDataSet
 from model import KerNet, ActivationNet
 from torch.optim import Adam
@@ -76,8 +76,8 @@ valid_dataloader = DataLoader(valid_ds, batch_size=batch_size)
 
 # Defining the network, optimizer and loss function.
 net = ActivationNet()
-optimizer = Adam(net.parameters(), lr=1e-3)
-loss_func = RegulatedLoss(0.01)
+optimizer = Adam(net.parameters(), lr=1e-4)
+loss_func = ActivationLoss(0.01)
 
 #  Getting parameters from my last model, and loading loss.
 trained_model_path = Path('trained_model.pt', map_location=torch.device('cpu'))
@@ -95,7 +95,7 @@ if trained_model_path.is_file():
 # Training loop:
 
 
-n_epochs = 0
+n_epochs = 500
 
 
 if torch.cuda.is_available():
