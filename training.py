@@ -95,7 +95,7 @@ if trained_model_path.is_file():
 # Training loop:
 
 
-n_epochs = 500
+n_epochs = 0
 
 
 if torch.cuda.is_available():

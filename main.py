@@ -15,8 +15,8 @@ def side_by_side(M1, M2, title):
     plt.show()
 
 
-levels = 3
-density = 0.005
+levels = 1
+density = 0.0001
 SNR = 10
 n1, n2 = 188, 188
 m1, m2 = 25, 25
@@ -58,27 +58,27 @@ m1, m2 = 25, 25
 # plt.show()
 
 # testing Y_factory
-Y, A, X = SBD.Y_factory(levels, (n1, n2), (m1, m2), density, SNR)
-A_noise = A + np.random.normal(0, A.mean() / 2, (levels, m1, m2))
-A_noise = SBD.sphere_norm_by_layer(A_noise)
-
-fig, ax = plt.subplots(levels, 2)
-fig.suptitle('Y:')
-for i in range(levels):
-    ax[i, 0].imshow(A[i, :, :], cmap='hot', interpolation='nearest')
-    ax[i, 1].imshow(Y[i, :, :], cmap='hot', interpolation='nearest')
-    for j in range(2):
-        ax[i, j].set_xticks([])
-        ax[i, j].set_yticks([])
-fig.tight_layout()
-fig.savefig('A_Y.jpg', dpi=500)
-
-fig2, ax2 = plt.subplots()
-ax2.imshow(X.toarray(), cmap='hot', interpolation='nearest')
-ax2.set_xticks([])
-ax2.set_yticks([])
-fig2.savefig('X.jpg', dpi=500)
-plt.show()
+# Y, A, X = SBD.Y_factory(levels, (n1, n2), (m1, m2), density, SNR)
+# A_noise = A + np.random.normal(0, A.mean() / 2, (levels, m1, m2))
+# A_noise = SBD.sphere_norm_by_layer(A_noise)
+#
+# fig, ax = plt.subplots(levels, 2)
+# fig.suptitle('Y:')
+# for i in range(levels):
+#     ax[i, 0].imshow(A[i, :, :], cmap='hot', interpolation='nearest')
+#     ax[i, 1].imshow(Y[i, :, :], cmap='hot', interpolation='nearest')
+#     for j in range(2):
+#         ax[i, j].set_xticks([])
+#         ax[i, j].set_yticks([])
+# fig.tight_layout()
+# fig.savefig('A_Y.jpg', dpi=500)
+#
+# fig2, ax2 = plt.subplots()
+# ax2.imshow(X.toarray(), cmap='hot', interpolation='nearest')
+# ax2.set_xticks([])
+# ax2.set_yticks([])
+# fig2.savefig('X.jpg', dpi=500)
+# plt.show()
 
 # Testing cost function - WORKS
 # cost = SBD.cost_fun(0.05, A, X, Y)
@@ -127,7 +127,6 @@ plt.show()
 # A_rand = A_rand / np.linalg.norm(A_rand)
 # X_guess = SBD.measurement_to_activation(Y)
 # X_guess = X_guess / np.sum(X_guess)
-# X_shifted = np.roll(X.A, (3, 1))
 # side_by_side(X_guess, X.A, 'Activation and Guess')
 #
 # A_solved = SBD.RTRM(1e-5, X_guess, Y, A_rand)

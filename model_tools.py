@@ -21,7 +21,8 @@ def save_data(number_of_samples, measurement_size, kernel_size, SNR=2, training=
 
     E, n1, n2 = measurement_size
     for i in range(number_of_samples):
-        sample_SNR = np.random.uniform(SNR / 2, 5*SNR)
+        # sample_ker_size = int(np.random.uniform(kernel_size[0]/2, kernel_size[0]*2))
+        sample_SNR = np.random.uniform(SNR / 2, 5 * SNR)
         temp_measurement, temp_kernel, temp_activation_map = Y_factory(E, (n1, n2),
                                                                        kernel_size,
                                                                        10 ** defect_density[i],
@@ -46,8 +47,8 @@ measurement_shape = (1, 200, 200)
 kernel_shape = (25, 25)
 
 save_data(10000, measurement_shape, kernel_shape, training=True)
-save_data(1000, measurement_shape, kernel_shape, validation=True)
-save_data(100, measurement_shape, kernel_shape, testing=True)
+save_data(2000, measurement_shape, kernel_shape, validation=True)
+save_data(500, measurement_shape, kernel_shape, testing=True)
 
 
 def tensor_to_nparray(tensor):
@@ -80,7 +81,7 @@ def plot_conv(kernel_in, activation_in, target_in):
 
 
 def smooth_abs(x, k=100):
-    return (2/k) * torch.log(1 + torch.exp(k*x)) - x - (2/k) * np.log(2)
+    return (2 / k) * torch.log(1 + torch.exp(k * x)) - x - (2 / k) * np.log(2)
 
 
 class ActivationLoss(nn.Module):
@@ -107,6 +108,29 @@ class ActivationLoss(nn.Module):
         regulation_term = self.regulator(activation_pred) - self.regulator(activation)
         loss = F.huber_loss(conv_pred_stack, conv_target_stack) / 2 \
                + self.r * smooth_abs(regulation_term)
+        loss /= activation.shape[0]
+        if torch.cuda.is_available():
+            return loss.cuda()
+        return loss
+
+
+class KernelLoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, kernel_pred, activation, kernel, target):
+        conv_pred = []
+        conv_target = []
+        for i in range(kernel_pred.shape[0]):
+            single_kernel = kernel[i].unsqueeze(dim=0)
+            single_kernel_pred = kernel_pred[i].unsqueeze(dim=0)
+            single_activation = activation[i].unsqueeze(dim=0).unsqueeze(dim=0)
+            # plot_conv(single_kernel, single_activation, target[i])
+            conv_pred.append(F.conv2d(single_activation, single_kernel_pred, padding='same'))
+            conv_target.append(F.conv2d(single_activation, single_kernel, padding='same'))
+        conv_pred_stack = torch.stack(conv_pred, dim=0).squeeze(dim=1)
+        conv_target_stack = torch.stack(conv_target, dim=0).squeeze(dim=1)
+        loss = F.huber_loss(conv_pred_stack, conv_target_stack) / 2
         loss /= activation.shape[0]
         if torch.cuda.is_available():
             return loss.cuda()
