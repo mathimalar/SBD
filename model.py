@@ -109,13 +109,16 @@ class KerNet(nn.Module):
             DoubleConv(2 ** 0, 2 ** 2),
             DoubleConv(2 ** 2, 2 ** 4),
         )
-        # EACH layer shrinks transverse size by a factor of 2.
+        # shrinks transverse size by a factor of 2.
         self.shrink = nn.Sequential(
             Down(2 ** 4, 2 ** 6),
         )
         self.filter_flatten = nn.Sequential(
             DoubleConv(2 ** 6, 2 ** 3),
-            DoubleConv(2 ** 3, 2 ** 0),
+            nn.Conv2d(2 ** 3, 2 ** 0, kernel_size=(3, 3), padding=1),
+            nn.BatchNorm2d(2 ** 0),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(2 ** 0, 2 ** 0, kernel_size=(3, 3), padding=1),
         )
 
     def forward(self, x):
