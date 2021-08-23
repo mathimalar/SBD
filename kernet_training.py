@@ -43,7 +43,7 @@ def plot_example(dataset, network, idx):
 
     for i in range(3):
         ax[i].set_axis_off()
-    plt.savefig(f'Pred{idx}')
+    plt.savefig(f'Ker_Pred{idx}')
 
 
 def compute_loss(dataloader, network, loss_function):
@@ -71,7 +71,7 @@ def compute_loss(dataloader, network, loss_function):
 
 
 print('Loading QPI datasets.')
-batch_size = 20
+batch_size = 15
 train_ds = QPIDataSet(os.getcwd() + '/training_dataset')
 valid_ds = QPIDataSet(os.getcwd() + '/validation_dataset')
 training_dataloader = DataLoader(train_ds, batch_size=batch_size)
@@ -101,7 +101,7 @@ if trained_model_path.is_file():
 # Training loop:
 
 
-n_epochs = 500
+n_epochs = 300
 
 
 if torch.cuda.is_available():
