@@ -70,7 +70,7 @@ def RTRM(lam_in, X_in, Y, A0):
     # Defining cost
     def cost(A): return cost_fun(lam_in, A, X_in, Y)
     problem = Problem(manifold=sphere, cost=cost)
-    solver = TrustRegions(mingradnorm=1e-10)
+    solver = TrustRegions(mingradnorm=5e-10)
     A_out = solver.solve(problem, x=A0)
     return A_out
 
@@ -143,6 +143,10 @@ def measurement_to_activation(measurement):
     net.double()
     measurement_tensor = ndarray_to_tensor(measurement)
     activation = net(measurement_tensor)[0][0].data.numpy()
+
+    # This next bit is a filter to zero out all the small numbers in the map
+    activation[activation < 10 * np.mean(activation)] = 0
+    activation = activation / np.sum(activation)
     return activation
 
 

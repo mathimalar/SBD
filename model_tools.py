@@ -43,10 +43,10 @@ def save_data(number_of_samples, measurement_size, kernel_size, SNR=2, training=
         print("Specify validation or training to save files.")
 
 
-measurement_shape = (1, 200, 200)
-kernel_shape = (25, 25)
+measurement_shape = (1, 128, 128)
+kernel_shape = (16, 16)
 
-save_data(5000, measurement_shape, kernel_shape, training=True)
+save_data(20000, measurement_shape, kernel_shape, training=True)
 save_data(1000, measurement_shape, kernel_shape, validation=True)
 save_data(500, measurement_shape, kernel_shape, testing=True)
 

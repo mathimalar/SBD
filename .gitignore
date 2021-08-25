@@ -6,3 +6,7 @@ validation_dataset/
 .idea/
 *.png
 *.jpg
+*.m
+*.mat
+*.csv
+*.3ds

@@ -101,7 +101,7 @@ if trained_model_path.is_file():
 # Training loop:
 
 
-n_epochs = 300
+n_epochs = 100
 
 
 if torch.cuda.is_available():
@@ -140,8 +140,8 @@ for epoch in pbar:
     training_loss_vs_epoch.append(training_loss.cpu().detach().numpy())
     if len(validation_loss_vs_epoch) == 1 or validation_loss_vs_epoch[-1] == min(validation_loss_vs_epoch):
         torch.save(net.state_dict(), 'trained_ker_model.pt')
-        np.save(val_loss_vs_epoch_path, validation_loss_vs_epoch)
-        np.save(training_loss_vs_epoch_path, training_loss_vs_epoch)
+    np.save(val_loss_vs_epoch_path, validation_loss_vs_epoch)
+    np.save(training_loss_vs_epoch_path, training_loss_vs_epoch)
 
 # Plotting results
 plot_result(validation_loss_vs_epoch, training_loss_vs_epoch)

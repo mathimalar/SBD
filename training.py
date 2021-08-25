@@ -16,6 +16,7 @@ def plot_result(val_vs_epoch):
     plt.plot(val_vs_epoch)
     plt.ylabel('Validation Loss')
     plt.yscale('log')
+    plt.ylim(bottom=0)
     plt.xlabel('Epoch number')
     plt.savefig('loss_vs_epoch')
     plt.show()
@@ -95,7 +96,7 @@ if trained_model_path.is_file():
 # Training loop:
 
 
-n_epochs = 0
+n_epochs = 1000
 
 
 if torch.cuda.is_available():

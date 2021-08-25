@@ -149,19 +149,19 @@ class KerNet(nn.Module):
         # shrinks transverse size by a factor of 2.
         self.down1 = Down(2 ** 6, 2 ** 7)
         self.down2 = Down(2 ** 7, 2 ** 8)
-        self.down3 = Down(2 ** 8, 2 ** 9 // 2)
+        self.down3 = Down(2 ** 8, 2 ** 9)
         factor = 2
-        self.up1 = UpCombine(2 ** 9, 2 ** 8 // factor)
-        self.up2 = UpCombine(2 ** 8, 2 ** 7)
+        self.up1 = Up(2 ** 9, 2 ** 8)
+        self.up2 = Up(2 ** 8, 2 ** 7)
         self.out = OutConv(2 ** 7, 1)
 
     def forward(self, x):
         expanded = self.filter_expand(x)
-        x1 = self.down1(expanded)
-        x2 = self.down2(x1)
-        x3 = self.down3(x2)
-        x = self.up1(x3, x2)
-        x = self.up2(x, x1)
+        x = self.down1(expanded)
+        x = self.down2(x)
+        x = self.down3(x)
+        x = self.up1(x)
+        x = self.up2(x)
         return self.out(x)
 
 

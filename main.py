@@ -16,7 +16,7 @@ def side_by_side(M1, M2, title):
 
 
 levels = 1
-density = 0.0001
+density = 0.005
 SNR = 10
 n1, n2 = 188, 188
 m1, m2 = 25, 25
@@ -88,20 +88,25 @@ m1, m2 = 25, 25
 
 # Testing FISTA: - gives bad approximations for activation maps
 # Y, A, X = SBD.Y_factory(levels, (n1, n2), (m1, m2), density, SNR)
-# A_noise = A + np.random.normal(0, A.mean() / 2, (levels, m1, m2))
-# A_noise = SBD.sphere_norm_by_layer(A_noise)
+# # A_noise = A + np.random.normal(0, A.mean() / 2, (levels, m1, m2))
+# # A_noise = SBD.sphere_norm_by_layer(A_noise)
 #
 # X_dense = X.toarray()
 # X_new = SBD.FISTA(1e-7, A, Y, niter=1000)
 # X_new = X_new / np.sum(X_new)
+#
+#
 # fig, ax = plt.subplots(1, 2)
 # fig.suptitle('Activation maps')
 # max_value = np.max(X)
-# im = ax[0].imshow(X_new, vmin=0, vmax=max_value, cmap='hot')
+# ax[0].imshow(X_new, vmin=0, vmax=max_value, cmap='hot')
+# ax[0].set_title('X approx')
 # ax[1].imshow(X_dense, vmin=0, vmax=max_value, cmap='hot')
-#
+# ax[1].set_title('X')
+# for i in range(2):
+#     ax[i].set_axis_off()
+# plt.savefig('x_approx', DPI=400)
 # plt.show()
-#
 # error_X = np.sum(X - X_new) / np.sum(X)
 # print(f'X relative error: {round(100 * error_X)}%')
 
@@ -120,32 +125,19 @@ m1, m2 = 25, 25
 # side_by_side(Y[0], A_conv_X[0], 'convolution test')
 
 # Testing RTRM:
-# Y, A, X = SBD.Y_factory(levels, (n1, n2), (m1, m2), density, SNR)
+Y, A, X = SBD.Y_factory(levels, (n1, n2), (m1, m2), density, SNR)
 # A_noise = A + np.random.normal(0, A.mean() / 2, (levels, m1, m2))
 # A_noise = SBD.sphere_norm_by_layer(A_noise)
-# A_rand = np.random.normal(0, A.mean() / 2, (levels, 2*m1, 2*m2))
-# A_rand = A_rand / np.linalg.norm(A_rand)
-# X_guess = SBD.measurement_to_activation(Y)
-# X_guess = X_guess / np.sum(X_guess)
-# side_by_side(X_guess, X.A, 'Activation and Guess')
-#
-# A_solved = SBD.RTRM(1e-5, X_guess, Y, A_rand)
-#
-# side_by_side(A_solved[0], A[0], 'RTRM result')
+A_rand = np.random.normal(0, A.mean() / 2, (levels, 2*m1, 2*m2))
+A_rand = A_rand / np.linalg.norm(A_rand)
 
-# Testing F.conv2d:
-# Y, A, X = SBD.Y_factory(levels, (n1, n2), (m1, m2), density, SNR)
-# X_dense = X.toarray()
-# X_tensor = torch.unsqueeze(torch.tensor(X_dense), dim=0)
-# A_tensor = torch.tensor(A)
-# Y_res = F.conv2d(X_tensor, A_tensor, padding='same')
-#
-# side_by_side(Y, Y_res, 'F conv')
 
-# Testing FFT
-# Y, A, X = SBD.Y_factory(levels, (n1, n2), (m1, m2), density, SNR)
-# Y_fft = np.fft.fftshift(np.fft.rfft2(Y, s=Y.shape))
-# A_fft = np.fft.fftshift(np.fft.rfft2(A, s=Y.shape))
-#
-# side_by_side(Y_fft[0].real, A_fft[0].real, 'FFTs')
+X_guess = SBD.measurement_to_activation(Y)
+A_solved = SBD.RTRM(1e-5, X_guess, Y, A_rand)
+side_by_side(X_guess, X.A, 'Activation and Guess')
+
+count1 = np.count_nonzero(X.A)
+count2 = np.count_nonzero(X_guess)
+side_by_side(A_solved[0], A[0], 'RTRM result')
+side_by_side(A_solved[0], Y[0], 'RTRM result')
 
