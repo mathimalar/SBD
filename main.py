@@ -5,21 +5,24 @@ import pylops as pl
 import torch.nn.functional as F
 
 
-def side_by_side(M1, M2, title):
-    fig, ax = plt.subplots(1, 2)
-    fig.suptitle(title)
+def side_by_side(M1, M2, figtitle, ax1_title, ax2_title):
+    fig, ax = plt.subplots(1, 2, figsize=(12, 6))
+    fig.suptitle(figtitle)
     ax[0].imshow(M1, cmap='hot')
+    ax[0].set_title(ax1_title)
     ax[1].imshow(M2, cmap='hot')
+    ax[1].set_title(ax2_title)
     for i in range(2):
         ax[i].set_axis_off()
+    plt.tight_layout()
     plt.show()
 
 
 levels = 1
-density = 0.005
+density = 0.001
 SNR = 10
-n1, n2 = 188, 188
-m1, m2 = 25, 25
+n1, n2 = 512, 512
+m1, m2 = 32, 32
 
 # Testing max_submatrix_pos
 
@@ -126,18 +129,31 @@ m1, m2 = 25, 25
 
 # Testing RTRM:
 Y, A, X = SBD.Y_factory(levels, (n1, n2), (m1, m2), density, SNR)
+side_by_side(A[0], Y[0], 'Measurement and kernel', 'Kernel', 'Measurement')
+
 # A_noise = A + np.random.normal(0, A.mean() / 2, (levels, m1, m2))
 # A_noise = SBD.sphere_norm_by_layer(A_noise)
+
 A_rand = np.random.normal(0, A.mean() / 2, (levels, 2*m1, 2*m2))
 A_rand = A_rand / np.linalg.norm(A_rand)
 
 
-X_guess = SBD.measurement_to_activation(Y)
-A_solved = SBD.RTRM(1e-5, X_guess, Y, A_rand)
-side_by_side(X_guess, X.A, 'Activation and Guess')
+X_guess_cnn = SBD.measurement_to_activation(Y, model='cnn')
+X_guess_lista = SBD.measurement_to_activation(Y, model='lista')
+side_by_side(X_guess_cnn, X.A, 'CNN Guess', 'Predicted', 'True')
+side_by_side(X_guess_cnn, Y[0], 'CNN Pred vs Measurement', 'Predicted Activation', 'Measurement')
 
-count1 = np.count_nonzero(X.A)
-count2 = np.count_nonzero(X_guess)
-side_by_side(A_solved[0], A[0], 'RTRM result')
-side_by_side(A_solved[0], Y[0], 'RTRM result')
+side_by_side(X_guess_lista, X.A, 'LISTA Guess', 'Predicted', 'True')
+side_by_side(X_guess_lista, Y[0], 'LISTA Pred vs Measurement', 'Predicted kernel', 'Measurement')
+
+A_solved_cnn = SBD.RTRM(1e-5, X_guess_cnn, Y, A_rand)
+A_solved_cnn = SBD.crop_to_center(A_solved_cnn, (levels, m1, m2))
+A_solved_lista = SBD.RTRM(1e-5, X_guess_lista, Y, A_rand)
+A_solved_lista = SBD.crop_to_center(A_solved_lista, (levels, m1, m2))
+count0 = np.count_nonzero(X.A)
+count_cnn = np.count_nonzero(X_guess_cnn)
+count_lista = np.count_nonzero(X_guess_cnn)
+side_by_side(A_solved_cnn[0], A[0], 'CNN Kernels', 'Predicted', 'True')
+side_by_side(A_solved_lista[0], A[0], 'LISTA Kernels', 'Predicted', 'True')
+
 

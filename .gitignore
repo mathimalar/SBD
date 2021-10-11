@@ -4,9 +4,13 @@ testing_dataset/
 training_dataset/
 validation_dataset/
 .idea/
+lightning_logs/
+lista 3lay 10iter pred/
+predictions/
 *.png
 *.jpg
 *.m
 *.mat
 *.csv
 *.3ds
+*.npy

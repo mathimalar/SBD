@@ -1,7 +1,6 @@
-import numpy as np
-from copy import deepcopy
+import model_tools
 import torch.nn as nn
-from torch.nn import Conv2d, ReLU, MaxPool2d, Linear, BatchNorm2d, LeakyReLU
+from torch.nn import Conv2d, ReLU, MaxPool2d, Linear, BatchNorm2d, LeakyReLU, Softmax
 import torch.nn.functional as F
 import torch
 
@@ -18,9 +17,11 @@ class DoubleConv(nn.Module):
             nn.Conv2d(in_channels, mid_channels, kernel_size=(3, 3), padding=1),
             nn.BatchNorm2d(mid_channels),
             nn.ReLU(inplace=True),
+            nn.Dropout(0.1),
             nn.Conv2d(mid_channels, out_channels, kernel_size=(3, 3), padding=1),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True)
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.1)
         )
 
     def forward(self, x):
@@ -99,6 +100,9 @@ class UpCombine(nn.Module):
 
 
 class ActivationNet(nn.Module):
+    """
+    Takes a QPI measurement and returns the activation map (defect locations and intensity)
+    """
     def __init__(self, input_channels=1):
         super().__init__()
         #  These values make sure the image dimensions stay the same
@@ -129,17 +133,86 @@ class ActivationNet(nn.Module):
             # Output layer
 
             Conv2d(2 ** 2, 1, kernel_size=ker_same, padding=pad, bias=False),
+            ReLU()
         )
 
-    def forward(self, x):
-        out = self.features(x)
-        return out
+    def forward(self, x_in):
+        # x = (x_in - torch.min(x_in)) / torch.max(x_in)
+        x = model_tools.normalize_tensor_0to1(x_in)
+        x = self.features(x)
+        x = model_tools.normalize_tensor_sumto1(x)
+        return x
+
+
+class ActivationResNet(nn.Module):
+    def __init__(self, input_channels=1):
+        super().__init__()
+        self.input_channels = input_channels
+        self.down1 = Down(2 ** 2, 2 ** 3)
+        self.down2 = Down(2 ** 3, 2 ** 4 // 2)
+        self.up1 = UpCombine(2 ** 4, 2 ** 3 // 2)
+        self.up2 = UpCombine(2 ** 3, 2 ** 2)
+        pad = 2  # These values make sure the image dimensions stay the same
+        ker_same = (5, 5)
+        self.input = nn.Sequential(
+            Conv2d(input_channels, 2 ** 2, kernel_size=ker_same, padding=pad, bias=False),
+            BatchNorm2d(2 ** 2),
+            LeakyReLU(),
+        )
+        self.output = nn.Sequential(
+            Conv2d(2 ** 2, 1, kernel_size=ker_same, padding=pad, bias=False),
+            ReLU()
+        )
+
+    def forward(self, x_in):
+        x = (x_in - torch.min(x_in)) / torch.max(x_in)
+        x1 = self.input(x)
+        x2 = self.down1(x1)
+        x3 = self.down2(x2)
+        x = self.up1(x3, x2)
+        x = self.up2(x, x1)
+        x = self.output(x)
+        x = model_tools.normalize_tensor_sumto1(x)
+        return x
+
+
+class ActivationSmiResNet(nn.Module):
+    def __init__(self, input_channels=1):
+        super().__init__()
+        self.input_channels = input_channels
+        self.down1 = Down(2 ** 2, 2 ** 3)
+        self.down2 = Down(2 ** 3, 2 ** 4 // 2)
+        self.up1 = UpCombine(2 ** 4, 2 ** 3)
+        self.up2 = Up(2 ** 3, 2 ** 2)
+        pad = 2  # These values make sure the image dimensions stay the same
+        ker_same = (5, 5)
+        self.input = nn.Sequential(
+            Conv2d(input_channels, 2 ** 2, kernel_size=ker_same, padding=pad, bias=False),
+            BatchNorm2d(2 ** 2),
+            LeakyReLU(),
+        )
+        self.output = nn.Sequential(
+            Conv2d(2 ** 2, 1, kernel_size=ker_same, padding=pad, bias=False),
+            ReLU()
+        )
+
+    def forward(self, x_in):
+        x = (x_in - torch.min(x_in)) / torch.max(x_in)
+        x1 = self.input(x)
+        x2 = self.down1(x1)
+        x3 = self.down2(x2)
+        x = self.up1(x3, x2)
+        x = self.up2(x)
+        x = self.output(x)
+        x = model_tools.normalize_tensor_sumto1(x)
+        return x
 
 
 class KerNet(nn.Module):
     """
     Cnn that shrinks by factor 8 and keeps the channel number the same.
     """
+
     def __init__(self):
         super(KerNet, self).__init__()
         # Doesn't change the size of the image
@@ -165,3 +238,26 @@ class KerNet(nn.Module):
         return self.out(x)
 
 
+class LISTA(nn.Module):
+    def __init__(self, layer_num, iter_num=10):
+        super(LISTA, self).__init__()
+        self.iter_num = iter_num
+        self.layer_num = layer_num
+        pad = (2, 2)  # These values make sure the image dimensions stay the same
+        ker_same = (5, 5)
+        self.x_layers = nn.ModuleList()
+        self.y_layers = nn.ModuleList()
+        self.slu_layers = nn.ModuleList()
+        for i in range(self.layer_num):
+            self.x_layers.append(nn.Conv2d(1, 1, kernel_size=ker_same, padding=pad))
+            self.y_layers.append(nn.Conv2d(1, 1, kernel_size=ker_same, padding=pad))
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        x = model_tools.normalize_tensor_0to1(x)
+        y = torch.clone(x)
+        for iteration in range(self.iter_num):
+            for layer_idx in range(self.layer_num):
+                x = self.relu(self.x_layers[layer_idx](x) + self.y_layers[layer_idx](y))
+            x = model_tools.normalize_tensor_sumto1(x)
+        return x
