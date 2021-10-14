@@ -39,7 +39,7 @@ class SBDSyntheticDataset(Dataset):
 
 
 # %%
-d = SBDSyntheticDataset(10, 200, 0.01, 0.1)
+d = SBDSyntheticDataset(10, 100, 0.01, 0.1)
 
 
 # %%
@@ -60,14 +60,14 @@ class DNNModel(pl.LightningModule):
 
     def training_step(self, train_batch, batch_idx):
         Y, K, X = train_batch
-        print(Y.type(), K.type(), X.type())
+        # print(Y.type(), K.type(), X.type())
         z = self.encoder(Y)    
         X_pred = self.decoder(z)
         X_pred = torch.squeeze(X_pred)    
         print(X_pred.shape, X.shape)
         loss = F.mse_loss(X_pred, X)
-        # self.log('train_loss', loss)
-        print(loss)
+        self.log('train_loss', loss)
+        # print(loss)
         return loss
 
     def validation_step(self, val_batch, batch_idx):
@@ -75,11 +75,11 @@ class DNNModel(pl.LightningModule):
         z = self.encoder(Y)
         X_pred = self.decoder(z)
         loss = F.mse_loss(X_pred, X)
-        # self.log('val_loss', loss)
+        self.log('val_loss', loss)
 
 
-train_loader = DataLoader(d, batch_size=2, shuffle=True)
-val_loader = DataLoader(d, batch_size=2, shuffle=True)
+train_loader = DataLoader(d, batch_size=5, shuffle=True)
+val_loader = DataLoader(d, batch_size=5, shuffle=False)
 
 # model
 model = DNNModel().double()
@@ -87,7 +87,7 @@ model = DNNModel().double()
 model.training_step(next(iter(train_loader)),1)
 
 # # training
-# trainer = pl.Trainer(gpus=4, num_nodes=8, precision=16, limit_train_batches=0.5)
+# trainer = pl.Trainer(gpus=1, num_nodes=1, limit_train_batches=0.5)
 # trainer.fit(model, train_loader, val_loader)
     
 

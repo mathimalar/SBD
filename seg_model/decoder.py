@@ -47,10 +47,10 @@ class DecoderSPP(nn.Module):
 
     def forward(self, x):
         x = F.interpolate(x, scale_factor=8, mode='bilinear', align_corners=True)
-        print(x.shape)
+        # print(x.shape)
         x = self.sep1(x)
         x = self.sep2(x)
-        print(x.shape)
+        # print(x.shape)
         x = self.conv(x)
-        print(x.shape)
+        # print(x.shape)
         return x
