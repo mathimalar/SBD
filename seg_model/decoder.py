@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
+from collections import OrderedDict
 
 
 class SeparableConv2d(nn.Module):
@@ -36,18 +37,20 @@ class SeparableConv2d(nn.Module):
 class DecoderSPP(nn.Module):
     def __init__(self):
         super().__init__()
-        self.conv = nn.Conv2d(256, 48, 1, bias=False)
-        self.bn = nn.BatchNorm2d(48)
-        self.relu = nn.ReLU(inplace=True)
-        self.sep1 = SeparableConv2d(304, 256, relu_first=False)
-        self.sep2 = SeparableConv2d(256, 256, relu_first=False)
 
-    def forward(self, x, low_level_feat):
-        x = F.interpolate(x, size=low_level_feat.shape[2:], mode='bilinear', align_corners=True)
-        low_level_feat = self.conv(low_level_feat)
-        low_level_feat = self.bn(low_level_feat)
-        low_level_feat = self.relu(low_level_feat)
-        x = torch.cat((x, low_level_feat), dim=1)
+        self.relu = nn.ReLU(inplace=True)
+        self.sep1 = SeparableConv2d(160, 80, relu_first=False)
+        self.sep2 = SeparableConv2d(80, 40, relu_first=False)
+        self.conv = nn.Conv2d(40, 1, 1, bias=False)
+
+
+
+    def forward(self, x):
+        x = F.interpolate(x, scale_factor=8, mode='bilinear', align_corners=True)
+        print(x.shape)
         x = self.sep1(x)
         x = self.sep2(x)
+        print(x.shape)
+        x = self.conv(x)
+        print(x.shape)
         return x

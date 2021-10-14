@@ -54,7 +54,7 @@ class MobileNetV2(nn.Module):
     def __init__(self, pretrained=False, model_path='../model/mobilenetv2_encoder/model.pth'):
         super().__init__()
 
-        self.conv = nn.Conv2d(3, 32, 3, stride=2, padding=1, bias=False)
+        self.conv = nn.Conv2d(1, 32, 3, stride=2, padding=1, bias=False)
         self.bn = nn.BatchNorm2d(32)
         self.relu = nn.ReLU6()
 
@@ -74,12 +74,13 @@ class MobileNetV2(nn.Module):
         self.block13 = ExpandedConv(96, 160, dilation=2)
         self.block14 = ExpandedConv(160, 160, dilation=4, skip_connection=True)
         self.block15 = ExpandedConv(160, 160, dilation=4, skip_connection=True)
-        self.block16 = ExpandedConv(160, 320, dilation=4)
+        self.block16 = ExpandedConv(160, 160, dilation=4)
 
         if pretrained:
             self.load_pretrained_model(model_path)
 
     def forward(self, x):
+        # print(x.type())
         x = self.conv(x)
         x = self.bn(x)
         x = self.relu(x)
