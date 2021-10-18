@@ -39,7 +39,7 @@ class DecoderSPP(nn.Module):
         super().__init__()
 
         self.relu = nn.ReLU(inplace=True)
-        self.sep1 = SeparableConv2d(160, 80, relu_first=False)
+        self.sep1 = SeparableConv2d(96, 80, relu_first=False)
         self.sep2 = SeparableConv2d(80, 40, relu_first=False)
         self.conv = nn.Conv2d(40, 1, 1, bias=False)
 
@@ -52,5 +52,6 @@ class DecoderSPP(nn.Module):
         x = self.sep2(x)
         # print(x.shape)
         x = self.conv(x)
+        x = F.relu(x, inplace=True)
         # print(x.shape)
         return x

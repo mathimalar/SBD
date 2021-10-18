@@ -69,12 +69,12 @@ class MobileNetV2(nn.Module):
         self.block8 = ExpandedConv(64, 64, dilation=2, skip_connection=True)
         self.block9 = ExpandedConv(64, 64, dilation=2, skip_connection=True)
         self.block10 = ExpandedConv(64, 96, dilation=2)
-        self.block11 = ExpandedConv(96, 96, dilation=2, skip_connection=True)
-        self.block12 = ExpandedConv(96, 96, dilation=2, skip_connection=True)
-        self.block13 = ExpandedConv(96, 160, dilation=2)
-        self.block14 = ExpandedConv(160, 160, dilation=4, skip_connection=True)
-        self.block15 = ExpandedConv(160, 160, dilation=4, skip_connection=True)
-        self.block16 = ExpandedConv(160, 160, dilation=4)
+        # self.block11 = ExpandedConv(96, 96, dilation=2, skip_connection=True)
+        # self.block12 = ExpandedConv(96, 96, dilation=2, skip_connection=True)
+        # self.block13 = ExpandedConv(96, 160, dilation=2)
+        # self.block14 = ExpandedConv(160, 160, dilation=4, skip_connection=True)
+        # self.block15 = ExpandedConv(160, 160, dilation=4, skip_connection=True)
+        # self.block16 = ExpandedConv(160, 160, dilation=4)
 
         if pretrained:
             self.load_pretrained_model(model_path)
@@ -95,12 +95,12 @@ class MobileNetV2(nn.Module):
         x = self.block8(x)
         x = self.block9(x)
         x = self.block10(x)
-        x = self.block11(x)
-        x = self.block12(x)
-        x = self.block13(x)
-        x = self.block14(x)
-        x = self.block15(x)
-        x = self.block16(x)
+        # x = self.block11(x)
+        # x = self.block12(x)
+        # x = self.block13(x)
+        # x = self.block14(x)
+        # x = self.block15(x)
+        # x = self.block16(x)
         return x
 
     def load_pretrained_model(self, model_path):
