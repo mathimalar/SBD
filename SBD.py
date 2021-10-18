@@ -1,3 +1,5 @@
+import matplotlib.pyplot as plt
+import matplotlib.colors as colors
 import numpy as np
 import pylops as pl
 import random
@@ -55,7 +57,7 @@ def deconv(Y, kernel_size, l_i, l_f, alpha):
     return A_out, X_out
 
 
-def RTRM(lam_in, X_in, Y, A0):
+def RTRM(lam_in, X_in, Y, A0, verbose=0):
     """
     Minimizing A for cost_fun using Riemannian Trust-Region Method (RTRM) over the sphere.
     :param lam_in: Sparsity parameter
@@ -72,7 +74,7 @@ def RTRM(lam_in, X_in, Y, A0):
     def cost(A): return cost_fun(lam_in, A, X_in, Y)
 
     problem = Problem(manifold=sphere, cost=cost)
-    solver = TrustRegions(mingradnorm=5e-10, maxtime=1.5 * 60)
+    solver = TrustRegions(mingradnorm=5e-6, maxtime=1.5 * 60, logverbosity=verbose)
     A_out = solver.solve(problem, x=A0)
     return A_out
 
@@ -143,8 +145,8 @@ def measurement_to_activation(measurement, model='cnn'):
         net = ActivationNet()
         trained_model_path = Path('trained_model_norm.pt', map_location=torch.device('cpu'))
     elif model == 'lista':
-        net = LISTA(3, iter_num=50)
-        trained_model_path = Path('trained_lista_3layers.pt', map_location=torch.device('cpu'))
+        net = LISTA(5, iter_num=10)
+        trained_model_path = Path('trained_lista_5layers.pt', map_location=torch.device('cpu'))
     if trained_model_path.is_file():
         net.load_state_dict(torch.load(trained_model_path))
         print('Loaded parameters from your trained model.')
@@ -337,6 +339,66 @@ def measurement_to_ker(measurement, ker_size):
         activation = measurement_to_activation(measurement)
         kernel[level] = RTRM(1e-5, activation, measurement, kernel)
     return crop_to_center(kernel, ker_shape)
+
+
+def recovery_error(A_guess, A_true):
+    """
+    Returns the recovery error defined by: (2/pi) * arccos|<A_g, A_t>|
+    """
+    return (2 / np.pi) * np.arccos(np.round(abs(np.dot(A_guess.flatten(), A_true.flatten())), 10))
+
+
+def benchmark(model, defect_density_range, kernel_size_range, SNR=2, samples=20):
+    """
+    Returns a recovery error matrix
+    """
+    error_matrix = np.zeros([len(defect_density_range), len(kernel_size_range)])
+    for i, defect_density in enumerate(defect_density_range):
+        for j, kernel_size in enumerate(kernel_size_range):
+            errors = np.zeros(samples)
+            for sample in range(samples):
+                Y, A, X = Y_factory(1, (256, 256), (kernel_size, kernel_size), defect_density, SNR)
+
+                X_guess = measurement_to_activation(Y, model=model)
+
+                A_rand = np.random.normal(0, 1, (1, 2 * kernel_size, 2 * kernel_size))
+                A_rand = A_rand / np.linalg.norm(A_rand)
+
+                A_solved = RTRM(1e-5, X_guess, Y, A_rand)
+                A_solved = crop_to_center(A_solved, (1, kernel_size, kernel_size))
+                A_solved = A_solved / np.linalg.norm(A_solved)  # norm = 1
+
+                errors[sample] = recovery_error(A_solved[0], A[0])
+            error_matrix[i, j] = np.median(errors)
+    return error_matrix
+
+
+def compare_fft_plot(matrix1, matrix2, title):
+    fft_matrix1 = np.fft.fftshift(np.fft.fft2(matrix1, s=np.shape(matrix1)))
+    fft_matrix2 = np.fft.fftshift(np.fft.fft2(matrix2, s=np.shape(matrix2)))
+
+    # Real Part
+    fig, ax = plt.subplots(2, 3, figsize=(18, 6))
+    fig.suptitle(title)
+
+    ax[0, 0].imshow(np.real(fft_matrix1), cmap='bwr', norm=colors.CenteredNorm())
+    ax[0, 0].set_title('Real Part 1')
+    ax[0, 1].imshow(np.imag(fft_matrix1), cmap='bwr', norm=colors.CenteredNorm())
+    ax[0, 1].set_title('Imaginary Part 1')
+    ax[0, 2].imshow(np.abs(fft_matrix1), cmap='bwr', norm=colors.CenteredNorm())
+    ax[0, 2].set_title('Absolute Value 1')
+
+    ax[1, 0].imshow(np.real(fft_matrix2), cmap='bwr', norm=colors.CenteredNorm())
+    ax[1, 0].set_title('Real Part 2')
+    ax[1, 1].imshow(np.imag(fft_matrix2), cmap='bwr', norm=colors.CenteredNorm())
+    ax[1, 1].set_title('Imaginary Part 2')
+    ax[1, 2].imshow(np.abs(fft_matrix2), cmap='bwr', norm=colors.CenteredNorm())
+    ax[1, 2].set_title('Absolute Value 2')
+    for j in range(2):
+        for i in range(3):
+            ax[j, i].set_axis_off()
+    plt.tight_layout()
+    plt.show()
 
 
 def save_data(number_of_samples, measurement_size, kernel_size, SNR=2, training=False, validation=False, testing=False):

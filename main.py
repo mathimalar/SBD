@@ -19,7 +19,7 @@ def side_by_side(M1, M2, figtitle, ax1_title, ax2_title):
 
 
 levels = 1
-density = 0.001
+density = 0.005
 SNR = 10
 n1, n2 = 512, 512
 m1, m2 = 32, 32
@@ -127,33 +127,59 @@ m1, m2 = 32, 32
 # A_conv_X = A_conv_X.reshape((levels, n1, n2))
 # side_by_side(Y[0], A_conv_X[0], 'convolution test')
 
-# Testing RTRM:
-Y, A, X = SBD.Y_factory(levels, (n1, n2), (m1, m2), density, SNR)
-side_by_side(A[0], Y[0], 'Measurement and kernel', 'Kernel', 'Measurement')
+# Testing RTRM & measurement_to_activation & recovery_error & compare_fft_plot:
+# It all works (compare fft shows checkers-board pattern).
+# Y, A, X = SBD.Y_factory(levels, (n1, n2), (m1, m2), density, SNR)
+# side_by_side(A[0], Y[0], 'Measurement and kernel', 'Kernel', 'Measurement')
+#
+# # A_noise = A + np.random.normal(0, A.mean() / 2, (levels, m1, m2))
+# # A_noise = SBD.sphere_norm_by_layer(A_noise)
+#
+# A_rand = np.random.normal(0, 1, (levels, 2*m1, 2*m2))
+# A_rand[0] = A_rand[0] / np.linalg.norm(A_rand[0])
+#
+#
+#
+# X_guess_cnn = SBD.measurement_to_activation(Y, model='cnn')
+# X_guess_lista = SBD.measurement_to_activation(Y, model='lista')
+# side_by_side(X_guess_cnn, X.A, 'CNN Guess', 'Predicted', 'True')
+# side_by_side(X_guess_cnn, Y[0], 'CNN Pred vs Measurement', 'Predicted Activation', 'Measurement')
+#
+# side_by_side(X_guess_lista, X.A, 'LISTA Guess', 'Predicted', 'True')
+# side_by_side(X_guess_lista, Y[0], 'LISTA Pred vs Measurement', 'Predicted kernel', 'Measurement')
+#
+# A_solved_cnn = SBD.RTRM(1e-5, X_guess_cnn, Y, A_rand)
+# A_solved_cnn = SBD.crop_to_center(A_solved_cnn, (levels, m1, m2))
+# A_solved_cnn = A_solved_cnn / np.linalg.norm(A_solved_cnn)  # norm = 1
+#
+# A_solved_lista = SBD.RTRM(1e-5, X_guess_lista, Y, A_rand)
+# A_solved_lista = SBD.crop_to_center(A_solved_lista, (levels, m1, m2))
+# A_solved_lista = A_solved_lista / np.linalg.norm(A_solved_lista)
+#
+# count0 = np.count_nonzero(X.A)
+# count_cnn = np.count_nonzero(X_guess_cnn)
+# count_lista = np.count_nonzero(X_guess_cnn)
+#
+# cnn_error = SBD.recovery_error(A_solved_cnn[0], A[0])
+# lista_error = SBD.recovery_error(A_solved_lista[0], A[0])
+# side_by_side(A_solved_cnn[0], A[0], f'CNN Kernels. Error = {np.round(cnn_error, 4)}', 'Predicted', 'True')
+# side_by_side(A_solved_lista[0], A[0], f'LISTA Kernels. Error = {np.round(lista_error, 4)}', 'Predicted', 'True')
+# SBD.compare_fft_plot(A[0], A_solved_lista[0], 'True FFT vs SBD FFT')
 
-# A_noise = A + np.random.normal(0, A.mean() / 2, (levels, m1, m2))
-# A_noise = SBD.sphere_norm_by_layer(A_noise)
+# Testing benchmark:
 
-A_rand = np.random.normal(0, A.mean() / 2, (levels, 2*m1, 2*m2))
-A_rand = A_rand / np.linalg.norm(A_rand)
+extent = [10**-3, 10**-1, 8/256, 62/256]
+# defect_range = np.logspace(-3, -1, 5)
+# kernel_range = np.linspace(8, 62, 5, dtype=int)
+#
+# error_matrix = SBD.benchmark('lista', defect_range, kernel_range, samples=4)
+# np.save('benchmark', error_matrix)
 
-
-X_guess_cnn = SBD.measurement_to_activation(Y, model='cnn')
-X_guess_lista = SBD.measurement_to_activation(Y, model='lista')
-side_by_side(X_guess_cnn, X.A, 'CNN Guess', 'Predicted', 'True')
-side_by_side(X_guess_cnn, Y[0], 'CNN Pred vs Measurement', 'Predicted Activation', 'Measurement')
-
-side_by_side(X_guess_lista, X.A, 'LISTA Guess', 'Predicted', 'True')
-side_by_side(X_guess_lista, Y[0], 'LISTA Pred vs Measurement', 'Predicted kernel', 'Measurement')
-
-A_solved_cnn = SBD.RTRM(1e-5, X_guess_cnn, Y, A_rand)
-A_solved_cnn = SBD.crop_to_center(A_solved_cnn, (levels, m1, m2))
-A_solved_lista = SBD.RTRM(1e-5, X_guess_lista, Y, A_rand)
-A_solved_lista = SBD.crop_to_center(A_solved_lista, (levels, m1, m2))
-count0 = np.count_nonzero(X.A)
-count_cnn = np.count_nonzero(X_guess_cnn)
-count_lista = np.count_nonzero(X_guess_cnn)
-side_by_side(A_solved_cnn[0], A[0], 'CNN Kernels', 'Predicted', 'True')
-side_by_side(A_solved_lista[0], A[0], 'LISTA Kernels', 'Predicted', 'True')
-
-
+error_matrix = np.load('benchmark.npy')
+plt.imshow(error_matrix, origin='lower', cmap='jet', extent=extent, aspect='auto')
+plt.colorbar(label=r'$\epsilon$')
+plt.xlabel('Defect density')
+plt.ylabel(r'Kernel relative size $m/n$')
+plt.xscale('log')
+plt.clim(0, 1)
+plt.show()
