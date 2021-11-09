@@ -12,14 +12,17 @@ from numpy.linalg import norm
 from pymanopt.manifolds import Sphere
 from pymanopt import Problem
 from pymanopt.solvers import TrustRegions
-from model import KerNet, ActivationNet, LISTA
+from model import ActivationNet, LISTA
 from pathlib import Path
 import torch
 import os
 from scipy import io
+from tqdm import tqdm
+from nanonispy.read import Grid
+from dataclasses import dataclass
 
 
-def deconv(Y, kernel_size, l_i, l_f, alpha):
+def deconv_v0(Y, kernel_size, l_i, l_f, alpha):
     """
     Preforms blind de-convolution given a measurement, kernel size, initial and final lambdas (sparsity), and decay rate.
     :param Y: measurement with shape (s, n1, n2)
@@ -57,6 +60,52 @@ def deconv(Y, kernel_size, l_i, l_f, alpha):
     return A_out, X_out
 
 
+def deconv_v1(filename: str, kernel_shape: (int, int), topography=False, level_list=None) -> (np.ndarray, np.ndarray):
+    # 0. Initializing parameters
+    path = Path(filename)
+    assert path.is_file(), f'There is no file here: {path}'
+    assert path.with_suffix('.3ds'), 'The suffix must be .3ds'
+    measurement = Measurement(Grid(path))
+    levels = measurement.level_num()
+
+    if level_list is None:
+        level_list = range(levels)
+    m1, m2 = kernel_shape
+    # 1. Initial guess is random, and normalized so |A|=1
+
+    A_rand = sphere_norm_by_layer(np.random.normal(0, 1, (levels, 2*m1, 2*m2)))
+    # 2. Solving
+    X_solved = measurement_to_activation(measurement.topo() if topography else measurement.DoS())
+    A_solved = np.array([RTRM(1e-5, X_solved, normalize_measurement(measurement.DoS()[i]), A_rand[i])[0] for i in level_list])
+    # 3. Cropping and normalizing
+    A_solved = crop_to_center(A_solved, (levels, m1, m2))  # Cropping (levels, 2*m1, 2*m2) to (levels, m1, m2)
+    A_solved = sphere_norm_by_layer(A_solved)  # |A[i]| = 1 for any i
+
+    return A_solved, X_solved
+
+
+@dataclass
+class Measurement:
+    """
+    This class represents the measurement (in the grid object) along with its activation map and kernel
+    """
+    grid: Grid
+    kernel: np.ndarray = None
+    activation_map: np.ndarray = None
+
+    def topo(self):
+        return self.grid.signals['topo']
+
+    def DoS(self):
+        return np.moveaxis(self.grid.signals['LIX 1 omega (A)'], -1, 0)
+
+    def DoS_over_I(self):
+        return np.moveaxis(np.divide(self.grid.signals['LIX 1 omega (A)'], self.grid.signals['Current (A)']), -1, 0)
+
+    def level_num(self):
+        return np.shape(self.grid.signals['LIX 1 omega (A)'])[-1]
+
+
 def RTRM(lam_in, X_in, Y, A0, verbose=0):
     """
     Minimizing A for cost_fun using Riemannian Trust-Region Method (RTRM) over the sphere.
@@ -66,16 +115,17 @@ def RTRM(lam_in, X_in, Y, A0, verbose=0):
     :param A0: Initial guess for A
     :return:
     """
-    # Initializing sphere manifold
-    s, m1, m2 = np.shape(A0)
+    # 1. Initializing sphere manifold
+    A_in = np.expand_dims(A0, 0) if np.ndim(A0) == 2 else A0
+    Y_in = np.expand_dims(Y, 0) if np.ndim(A0) == 2 else Y
+    s, m1, m2 = np.shape(A_in)
     sphere = Sphere(s, m1, m2)
-
-    # Defining cost
-    def cost(A): return cost_fun(lam_in, A, X_in, Y)
-
+    # 2. Defining the problem
+    def cost(A): return cost_fun(lam_in, A, X_in, Y_in)
     problem = Problem(manifold=sphere, cost=cost)
+    # 3. Solving
     solver = TrustRegions(mingradnorm=5e-6, maxtime=1.5 * 60, logverbosity=verbose)
-    A_out = solver.solve(problem, x=A0)
+    A_out = solver.solve(problem, x=A_in)
     return A_out
 
 
@@ -133,14 +183,15 @@ def ndarray_to_tensor(array):
     """
     Turns an ndarray to a torch tensor
     """
-    tensor = torch.tensor(array).unsqueeze(dim=0)
+    tensor = torch.tensor(array.astype(np.float)).unsqueeze(dim=0)
     return tensor
 
 
-def measurement_to_activation(measurement, model='cnn'):
+def measurement_to_activation(measurement, model='lista'):
     """
     Takes in n1 by n2 torch tensor of a measurement and returns an n1 by n2 torch tensor of its activation map
     """
+    assert np.ndim(measurement) == 2 or np.ndim(measurement) == 3, f'Your measurement has {np.ndim(measurement)} dimensions'
     if model == 'cnn':
         net = ActivationNet()
         trained_model_path = Path('trained_model_norm.pt', map_location=torch.device('cpu'))
@@ -155,12 +206,31 @@ def measurement_to_activation(measurement, model='cnn'):
     net.eval()
     net.cpu()
     net.double()
-    measurement_tensor = ndarray_to_tensor(measurement)
-    activation = net(measurement_tensor)[0][0].data.numpy()
+    mes_shape = np.shape(measurement)
 
-    # This next bit is a filter to zero out all the small numbers in the map
-    activation[activation < 10 * np.mean(activation)] = 0
+    if np.ndim(measurement) == 3:
+        activations = np.zeros(mes_shape)
+
+        for level in range(mes_shape[0]):
+            temp_mes = measurement[level]
+            temp_mes = temp_mes[np.newaxis, :, :]
+            measurement_tensor = ndarray_to_tensor(temp_mes)
+            temp_act = net(measurement_tensor)[0][0].data.numpy()
+
+            # This next bit is a filter to zero out all the small numbers in the map
+            # temp_act[temp_act < 10 * np.mean(temp_act)] = 0
+            temp_act = temp_act / np.sum(temp_act)
+            activations[level] = temp_act
+
+        activation = np.mean(activations, axis=0)
+
+    else:
+        measurement_tensor = ndarray_to_tensor(np.expand_dims(measurement, 0))
+        activation = net(measurement_tensor)[0][0].data.numpy()
+
+    activation[activation < np.max(activation)/100] = 0
     activation = activation / np.sum(activation)
+    # activation = net(ndarray_to_tensor(np.expand_dims(activation, 0)))[0][0].data.numpy()
     return activation
 
 
@@ -184,7 +254,7 @@ def Y_factory(s, Y_size, A_size, density, SNR=0):
     return Y, A, X
 
 
-def kernel_factory(s, m1, m2):
+def kernel_factory(s: int, m1: int, m2: int):
     """
     This function produces a set of s random m1 by m2 kernels
     """
@@ -194,16 +264,10 @@ def kernel_factory(s, m1, m2):
     half_sym = np.floor(symmetry / 2).astype('int')
     lowest_k = 0.5
     highest_k = 3
-    k = np.zeros([s, symmetry])
-    for level in range(s):
-        k[level, :] = np.random.uniform(lowest_k, highest_k, symmetry)
-
+    k = np.random.uniform(lowest_k, highest_k, [s, symmetry])
     x, y = np.meshgrid(np.linspace(-1, 1, m_max), np.linspace(-1, 1, m_max))
-    # dist = np.sqrt(x * x + y * y)
-    # theta = np.arctan(x / y)
     arb_angle = np.random.uniform(0, 2 * np.pi)
-    rng = default_rng()
-    # sin_or_cos = rng.choice(['sin', 'cos'])
+
     for direction in range(symmetry):
         ang = direction * 180 / symmetry
         ang = arb_angle + ang * np.pi / 180
@@ -214,13 +278,7 @@ def kernel_factory(s, m1, m2):
             sigma = np.random.uniform(0.2, 0.5)
             decay = gaussian_window(m_max, m_max, sigma)
             A[i, :, :] += np.cos(2 * np.pi * k[i, direction % half_sym] * r) * decay
-            # A[i, :, :] += np.cos(2 * np.pi * k[i, direction % half_sym] * r) * decay
-            # if sin_or_cos == 'cos':
-            #     A[i, :, :] += np.cos(2 * np.pi * k[i, direction % half_sym] * r) * decay
-            # else:
-            #     A[i, :, :] += np.sin(2 * np.pi * k[i, direction % half_sym] * r) * decay
 
-    # A = np.multiply(np.abs(A), decay)
     # Normalizing:
     A = np.abs(A)
     A = sphere_norm_by_layer(A)
@@ -230,7 +288,7 @@ def kernel_factory(s, m1, m2):
 def sphere_norm_by_layer(M):
     """
     Returns your matrix normalized to the unit sphere.
-    :param M: A matrix with 2 or 3 dimensions
+    :param M: A matrix with 3 dimensions
     :return: M normalized such that the sum of it's elements squared is one.
     """
     assert len(np.shape(M)) == 3, 'The matrix does not have 3 dim'
@@ -318,7 +376,7 @@ def crop_to_center(M, box_shape):
     """
     Crops a (s, n1, n2) matrix to a (s, m1, m2) matrix around the center
     :param M: dim=3 matrix
-    :param box_shape: (m1, m2) touple
+    :param box_shape: (m1, m2) tuple
     :return: dim=3 matrix
     """
     if len(box_shape) == 3:
@@ -353,7 +411,8 @@ def benchmark(model, defect_density_range, kernel_size_range, SNR=2, samples=20)
     Returns a recovery error matrix
     """
     error_matrix = np.zeros([len(defect_density_range), len(kernel_size_range)])
-    for i, defect_density in enumerate(defect_density_range):
+    for i, defect_density in enumerate(tqdm(defect_density_range)):
+        print(f'loop {i + 1} out of {len(defect_density_range)} \n')
         for j, kernel_size in enumerate(kernel_size_range):
             errors = np.zeros(samples)
             for sample in range(samples):
@@ -374,8 +433,9 @@ def benchmark(model, defect_density_range, kernel_size_range, SNR=2, samples=20)
 
 
 def compare_fft_plot(matrix1, matrix2, title):
-    fft_matrix1 = np.fft.fftshift(np.fft.fft2(matrix1, s=np.shape(matrix1)))
-    fft_matrix2 = np.fft.fftshift(np.fft.fft2(matrix2, s=np.shape(matrix2)))
+    bigger_shape = np.shape(matrix1) if np.shape(matrix1)[1] > np.shape(matrix2)[1] else np.shape(matrix2)
+    fft_matrix1 = np.fft.fftshift(np.fft.fft2(matrix1, s=bigger_shape))
+    fft_matrix2 = np.fft.fftshift(np.fft.fft2(matrix2, s=bigger_shape))
 
     # Real Part
     fig, ax = plt.subplots(2, 3, figsize=(18, 6))
@@ -435,6 +495,12 @@ def save_data(number_of_samples, measurement_size, kernel_size, SNR=2, training=
     if not training and not validation and not testing:
         print("Specify validation or training to save files.")
 
+
+def normalize_measurement(Y):
+    """
+    Normalizes the input such that mean[Y]=0 and STD[Y]=0.0025
+    """
+    return (0.0025/np.std(Y)) * (Y - np.mean(Y))
 # measurement_shape = (1, 128, 128)
 # kernel_shape = (16, 16)
 #

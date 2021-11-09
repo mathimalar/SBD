@@ -1,3 +1,5 @@
+import numpy as np
+
 import model_tools
 import torch.nn as nn
 from torch.nn import Conv2d, ReLU, MaxPool2d, Linear, BatchNorm2d, LeakyReLU, Softmax
@@ -239,6 +241,9 @@ class KerNet(nn.Module):
 
 
 class LISTA(nn.Module):
+    """
+    This model is the unrolled ISTA algorithm
+    """
     def __init__(self, layer_num, iter_num=10):
         super(LISTA, self).__init__()
         self.iter_num = iter_num
@@ -253,7 +258,11 @@ class LISTA(nn.Module):
             self.y_layers.append(nn.Conv2d(1, 1, kernel_size=ker_same, padding=pad))
         self.relu = nn.ReLU()
 
-    def forward(self, x):
+    def set_iter(self, new_iter: int) -> None:
+        self.iter_num = new_iter
+        pass
+
+    def forward(self, x) -> np.ndarray:
         x = model_tools.normalize_tensor_0to1(x)
         y = torch.clone(x)
         for iteration in range(self.iter_num):
@@ -261,3 +270,6 @@ class LISTA(nn.Module):
                 x = self.relu(self.x_layers[layer_idx](x) + self.y_layers[layer_idx](y))
             x = model_tools.normalize_tensor_sumto1(x)
         return x
+
+
+
