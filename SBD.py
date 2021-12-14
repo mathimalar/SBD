@@ -48,7 +48,7 @@ def deconv_v0(Y, kernel_size, l_i, l_f, alpha):
     sparse = l_i
     iteration_number = np.ceil(np.log(l_f / l_i) / np.log(alpha))
 
-    for i in range(iteration_number):
+    for _ in range(iteration_number):
         A_big, X = Asolve(A_big, sparse, Y, X)
         A_big, X = center(kernel_array, A, X)
         sparse = alpha * sparse
@@ -73,10 +73,11 @@ def deconv_v1(filename: str, kernel_shape: (int, int), topography=False, level_l
     m1, m2 = kernel_shape
     # 1. Initial guess is random, and normalized so |A|=1
 
-    A_rand = sphere_norm_by_layer(np.random.normal(0, 1, (levels, 2*m1, 2*m2)))
+    A_rand = sphere_norm_by_layer(np.random.normal(0, 1, (levels, 2 * m1, 2 * m2)))
     # 2. Solving
     X_solved = measurement_to_activation(measurement.topo() if topography else measurement.DoS())
-    A_solved = np.array([RTRM(1e-5, X_solved, normalize_measurement(measurement.DoS()[i]), A_rand[i])[0] for i in level_list])
+    A_solved = np.array(
+        [RTRM(1e-5, X_solved, normalize_measurement(measurement.DoS()[i]), A_rand[i])[0] for i in level_list])
     # 3. Cropping and normalizing
     A_solved = crop_to_center(A_solved, (levels, m1, m2))  # Cropping (levels, 2*m1, 2*m2) to (levels, m1, m2)
     A_solved = sphere_norm_by_layer(A_solved)  # |A[i]| = 1 for any i
@@ -92,18 +93,46 @@ class Measurement:
     grid: Grid
     kernel: np.ndarray = None
     activation_map: np.ndarray = None
+    _level_list: list = None
+    _kernel_shape: (int, int) = None
 
+    @property
+    def kernel_shape(self):
+        return np.shape(self.kernel)[:2]
+
+    @kernel_shape.setter
+    def kernel_shape(self, shape: (int, int)):
+        """Changes the shape of the kernel and crops it to the new shape"""
+        assert len(shape) == 2, 'Kernel shape has to be 2 numbers.'
+        self._kernel_shape = shape
+        if self.kernel is not None:
+            self.kernel = crop_to_center(self.kernel, shape)
+
+    @property
     def topo(self):
         return self.grid.signals['topo']
 
+    @property
     def DoS(self):
         return np.moveaxis(self.grid.signals['LIX 1 omega (A)'], -1, 0)
 
+    @property
     def DoS_over_I(self):
         return np.moveaxis(np.divide(self.grid.signals['LIX 1 omega (A)'], self.grid.signals['Current (A)']), -1, 0)
 
+    @property
     def level_num(self):
-        return np.shape(self.grid.signals['LIX 1 omega (A)'])[-1]
+        return np.shape(self.grid.signals['LIX 1 omega (A)'])[-1] if self._level_list is None else len(self._level_list)
+
+    @property
+    def level_list(self):
+        return [*range(self.level_num)] if self._level_list is None else self._level_list
+
+    @level_list.setter
+    def level_list(self, given_list):
+        assert np.all(np.isin(given_list, [*range(self.level_num)])), \
+            f'Some of the levels in {given_list} the given list don\'t exist in the measurement'
+        self._level_list = given_list
 
 
 def RTRM(lam_in, X_in, Y, A0, verbose=0):
@@ -120,8 +149,10 @@ def RTRM(lam_in, X_in, Y, A0, verbose=0):
     Y_in = np.expand_dims(Y, 0) if np.ndim(A0) == 2 else Y
     s, m1, m2 = np.shape(A_in)
     sphere = Sphere(s, m1, m2)
+
     # 2. Defining the problem
     def cost(A): return cost_fun(lam_in, A, X_in, Y_in)
+
     problem = Problem(manifold=sphere, cost=cost)
     # 3. Solving
     solver = TrustRegions(mingradnorm=5e-6, maxtime=1.5 * 60, logverbosity=verbose)
@@ -169,11 +200,7 @@ def regulator(X):
 
 
 def Asolve(A_in, lambda_in, Y, X=None):
-    if X is None:
-        X_in = FISTA(lambda_in, A_in, Y)
-    else:
-        X_in = X
-
+    X_in = FISTA(lambda_in, A_in, Y) if X is None else X
     A_out = RTRM(lambda_in, X_in, Y, A_in)
     X_out = FISTA(lambda_in, A_in, Y)
     raise NotImplementedError
@@ -191,7 +218,7 @@ def measurement_to_activation(measurement, model='lista'):
     """
     Takes in n1 by n2 torch tensor of a measurement and returns an n1 by n2 torch tensor of its activation map
     """
-    assert np.ndim(measurement) == 2 or np.ndim(measurement) == 3, f'Your measurement has {np.ndim(measurement)} dimensions'
+    assert np.ndim(measurement) in [2, 3], f'Your measurement has {np.ndim(measurement)} dimensions'
     if model == 'cnn':
         net = ActivationNet()
         trained_model_path = Path('trained_model_norm.pt', map_location=torch.device('cpu'))
@@ -228,7 +255,7 @@ def measurement_to_activation(measurement, model='lista'):
         measurement_tensor = ndarray_to_tensor(np.expand_dims(measurement, 0))
         activation = net(measurement_tensor)[0][0].data.numpy()
 
-    activation[activation < np.max(activation)/100] = 0
+    activation[activation < np.max(activation) / 100] = 0
     activation = activation / np.sum(activation)
     # activation = net(ndarray_to_tensor(np.expand_dims(activation, 0)))[0][0].data.numpy()
     return activation
@@ -302,8 +329,7 @@ def gaussian_window(n1, n2, sig=1, mu=0):
     """
     x, y = np.meshgrid(np.linspace(-1, 1, n1), np.linspace(-1, 1, n2))
     d = np.sqrt(x * x + y * y)
-    g = np.exp(-((d - mu) ** 2 / (2.0 * sig ** 2)))
-    return g
+    return np.exp(-((d - mu) ** 2 / (2.0 * sig ** 2)))
 
 
 def center(size, A, X):
@@ -318,7 +344,7 @@ def center(size, A, X):
     max_corner = max_submatrix_pos(A, size[-2], size[-1])
     A_shift = tuple([np.floor(center_corner1 - max_corner[0]).astype('int'),
                      np.floor(center_corner2 - max_corner[1]).astype('int')])
-    X_shift = tuple([(- j) for j in A_shift])
+    X_shift = tuple(- j for j in A_shift)
     centered_A = shift(A, A_shift)
     centered_X = shift(X, X_shift)
 
@@ -500,7 +526,7 @@ def normalize_measurement(Y):
     """
     Normalizes the input such that mean[Y]=0 and STD[Y]=0.0025
     """
-    return (0.0025/np.std(Y)) * (Y - np.mean(Y))
+    return (0.0025 / np.std(Y)) * (Y - np.mean(Y))
 # measurement_shape = (1, 128, 128)
 # kernel_shape = (16, 16)
 #
