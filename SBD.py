@@ -127,8 +127,8 @@ def deconv_v1(filename: str, kernel_shape: (int, int), topography=False, level_l
 
 def measurement_to_ker(measurement: Measurement, X):
     # Initial random guess
-    kernel_rnd = np.random.normal(0, 1,tuple(2 * m for m in measurement.kernel_shape))
-    kernel_rnd = sphere_norm_by_layer(kernel_rnd)
+    kernel_rnd = np.random.normal(0, 1, tuple(2 * m for m in measurement.kernel_shape))
+    kernel_rnd = kernel_rnd / np.linalg.norm(kernel_rnd)  # Norm = 1
     # Solving
     kernel = np.zeros((measurement.level_num,) + tuple(2 * m for m in measurement.kernel_shape))
     for i, level in enumerate(measurement.level_list):

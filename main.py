@@ -184,9 +184,9 @@ def main():
              r'T:\LT_data\TaAs\2016-01-01\Grid Spectroscopy002.3ds',
              r'T:\LT_data\TaAs\2016-01-04\Grid Spectroscopy002.3ds',
              r'T:\LT_data\Copper\2019-12-22\Grid Spectroscopy002.3ds']
-    levels = [7]
+    levels = [6, 7, 8]
     A_solved, X_solved = SBD.deconv_v1(files[0], (25, 25), level_list=levels)
-    side_by_side(X_solved, A_solved)
+    side_by_side(X_solved, A_solved, 'activation', 'recovered kernel')
 
 
 if __name__ == '__main__':
