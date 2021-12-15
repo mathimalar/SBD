@@ -22,6 +22,56 @@ from nanonispy.read import Grid
 from dataclasses import dataclass
 
 
+@dataclass
+class Measurement:
+    """
+    This class represents the measurement (in the grid object) along with its activation map and kernel
+    """
+    grid: Grid
+    kernel: np.ndarray = None
+    activation_map: np.ndarray = None
+    _level_list: list = None
+    _kernel_shape: (int, int) = None
+
+    @property
+    def kernel_shape(self):
+        return self._kernel_shape if self.kernel is None else np.shape(self.kernel)
+
+    @kernel_shape.setter
+    def kernel_shape(self, shape: (int, int)):
+        """Changes the shape of the kernel and crops it to the new shape"""
+        assert len(shape) == 2, 'Kernel shape has to be 2 numbers.'
+        self._kernel_shape = shape
+        if self.kernel is not None:
+            self.kernel = crop_to_center(self.kernel, shape)
+
+    @property
+    def topo(self):
+        return self.grid.signals['topo']
+
+    @property
+    def DoS(self):
+        return np.moveaxis(self.grid.signals['LIX 1 omega (A)'], -1, 0)
+
+    @property
+    def DoS_over_I(self):
+        return np.moveaxis(np.divide(self.grid.signals['LIX 1 omega (A)'], self.grid.signals['Current (A)']), -1, 0)
+
+    @property
+    def level_num(self):
+        return np.shape(self.grid.signals['LIX 1 omega (A)'])[-1] if self._level_list is None else len(self._level_list)
+
+    @property
+    def level_list(self):
+        return [*range(self.level_num)] if self._level_list is None else self._level_list
+
+    @level_list.setter
+    def level_list(self, given_list):
+        assert np.all(np.isin(given_list, [*range(self.level_num), None])), \
+            f'Some of the levels in {given_list} the given list don\'t exist in the measurement'
+        self._level_list = given_list
+
+
 def deconv_v0(Y, kernel_size, l_i, l_f, alpha):
     """
     Preforms blind de-convolution given a measurement, kernel size, initial and final lambdas (sparsity), and decay rate.
@@ -61,78 +111,35 @@ def deconv_v0(Y, kernel_size, l_i, l_f, alpha):
 
 
 def deconv_v1(filename: str, kernel_shape: (int, int), topography=False, level_list=None) -> (np.ndarray, np.ndarray):
-    # 0. Initializing parameters
     path = Path(filename)
     assert path.is_file(), f'There is no file here: {path}'
     assert path.with_suffix('.3ds'), 'The suffix must be .3ds'
     measurement = Measurement(Grid(path))
-    levels = measurement.level_num()
+    measurement.kernel_shape = kernel_shape
+    measurement.level_list = level_list
 
-    if level_list is None:
-        level_list = range(levels)
-    m1, m2 = kernel_shape
-    # 1. Initial guess is random, and normalized so |A|=1
-
-    A_rand = sphere_norm_by_layer(np.random.normal(0, 1, (levels, 2 * m1, 2 * m2)))
-    # 2. Solving
-    X_solved = measurement_to_activation(measurement.topo() if topography else measurement.DoS())
-    A_solved = np.array(
-        [RTRM(1e-5, X_solved, normalize_measurement(measurement.DoS()[i]), A_rand[i])[0] for i in level_list])
-    # 3. Cropping and normalizing
-    A_solved = crop_to_center(A_solved, (levels, m1, m2))  # Cropping (levels, 2*m1, 2*m2) to (levels, m1, m2)
-    A_solved = sphere_norm_by_layer(A_solved)  # |A[i]| = 1 for any i
+    # Solving
+    X_solved = measurement_to_activation(measurement.topo if topography else measurement.DoS)
+    A_solved = measurement_to_ker(measurement, X_solved)
 
     return A_solved, X_solved
 
 
-@dataclass
-class Measurement:
-    """
-    This class represents the measurement (in the grid object) along with its activation map and kernel
-    """
-    grid: Grid
-    kernel: np.ndarray = None
-    activation_map: np.ndarray = None
-    _level_list: list = None
-    _kernel_shape: (int, int) = None
+def measurement_to_ker(measurement: Measurement, X):
+    # Initial random guess
+    kernel_rnd = np.random.normal(0, 1,tuple(2 * m for m in measurement.kernel_shape))
+    kernel_rnd = sphere_norm_by_layer(kernel_rnd)
+    # Solving
+    kernel = np.zeros((measurement.level_num,) + tuple(2 * m for m in measurement.kernel_shape))
+    for i, level in enumerate(measurement.level_list):
+        if i == 1:
+            kernel[i] = np.array(RTRM(1e-5, X, normalize_measurement(measurement.DoS[level]), kernel_rnd)[0])
+        else:
+            kernel[i] = np.array(RTRM(1e-5, X, normalize_measurement(measurement.DoS[level]), kernel[i - 1])[0])
 
-    @property
-    def kernel_shape(self):
-        return np.shape(self.kernel)[:2]
-
-    @kernel_shape.setter
-    def kernel_shape(self, shape: (int, int)):
-        """Changes the shape of the kernel and crops it to the new shape"""
-        assert len(shape) == 2, 'Kernel shape has to be 2 numbers.'
-        self._kernel_shape = shape
-        if self.kernel is not None:
-            self.kernel = crop_to_center(self.kernel, shape)
-
-    @property
-    def topo(self):
-        return self.grid.signals['topo']
-
-    @property
-    def DoS(self):
-        return np.moveaxis(self.grid.signals['LIX 1 omega (A)'], -1, 0)
-
-    @property
-    def DoS_over_I(self):
-        return np.moveaxis(np.divide(self.grid.signals['LIX 1 omega (A)'], self.grid.signals['Current (A)']), -1, 0)
-
-    @property
-    def level_num(self):
-        return np.shape(self.grid.signals['LIX 1 omega (A)'])[-1] if self._level_list is None else len(self._level_list)
-
-    @property
-    def level_list(self):
-        return [*range(self.level_num)] if self._level_list is None else self._level_list
-
-    @level_list.setter
-    def level_list(self, given_list):
-        assert np.all(np.isin(given_list, [*range(self.level_num)])), \
-            f'Some of the levels in {given_list} the given list don\'t exist in the measurement'
-        self._level_list = given_list
+    # Cropping and normalizing
+    kernel = crop_to_center(kernel, measurement.kernel_shape)
+    return sphere_norm_by_layer(kernel)
 
 
 def RTRM(lam_in, X_in, Y, A0, verbose=0):
@@ -185,8 +192,7 @@ def cost_fun(lambda_in, A, X, Y):
     s, n1, n2 = np.shape(Y)
     A_con_X = aconvolve(sX.A, A, mode='full', axes=([0, 1], [1, 2]))
     A_con_X = crop_to_center(A_con_X, (n1, n2))
-    phi = 0.5 * anp.sum((A_con_X - Y) ** 2) + lambda_in * regulator(sX.A)
-    return phi
+    return 0.5 * anp.sum((A_con_X - Y) ** 2) + lambda_in * regulator(sX.A)
 
 
 def regulator(X):
@@ -210,8 +216,7 @@ def ndarray_to_tensor(array):
     """
     Turns an ndarray to a torch tensor
     """
-    tensor = torch.tensor(array.astype(np.float)).unsqueeze(dim=0)
-    return tensor
+    return torch.tensor(array.astype(np.float)).unsqueeze(dim=0)
 
 
 def measurement_to_activation(measurement, model='lista'):
@@ -319,8 +324,7 @@ def sphere_norm_by_layer(M):
     :return: M normalized such that the sum of it's elements squared is one.
     """
     assert len(np.shape(M)) == 3, 'The matrix does not have 3 dim'
-    M_out = M / norm(M, axis=(-2, -1))[:, None, None]
-    return M_out
+    return M / norm(M, axis=(-2, -1))[:, None, None]
 
 
 def gaussian_window(n1, n2, sig=1, mu=0):
@@ -353,7 +357,7 @@ def center(size, A, X):
 
 def shift(mt, s=(0, 0)):
     """
-    Takes a matrix and a tuple and returns that matrix shifted according to the tuple.
+    Takes a matrix and a tuple and returns that matrix shifted in the last 2 axes according to the tuple.
     :param mt: matrix, shape len 2 or 3
     :param s: tuple defining the shift (row shift, column shift)
     :return: shifted matrix
@@ -402,7 +406,7 @@ def crop_to_center(M, box_shape):
     """
     Crops a (s, n1, n2) matrix to a (s, m1, m2) matrix around the center
     :param M: dim=3 matrix
-    :param box_shape: (m1, m2) tuple
+    :param box_shape: (m1, m2) or (s, m1, m2)
     :return: dim=3 matrix
     """
     if len(box_shape) == 3:
@@ -412,17 +416,6 @@ def crop_to_center(M, box_shape):
     diff = np.subtract(np.shape(M)[1:], box_shape)
     gap = diff // 2
     return M[:, gap[0]:gap[0] + box_shape[0], gap[1]:gap[1] + box_shape[1]]
-
-
-def measurement_to_ker(measurement, ker_size):
-    levels = np.shape(measurement)[0]
-    ker_shape = levels, ker_size[0], ker_size[1]
-    kernel = np.random.normal(0, 1, (levels, 2 * ker_size[0], 2 * ker_size[1]))
-    kernel = sphere_norm_by_layer(kernel)
-    for level in range(levels):
-        activation = measurement_to_activation(measurement)
-        kernel[level] = RTRM(1e-5, activation, measurement, kernel)
-    return crop_to_center(kernel, ker_shape)
 
 
 def recovery_error(A_guess, A_true):

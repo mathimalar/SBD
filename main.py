@@ -152,7 +152,6 @@ def plot_fft(A, X, Y, level) -> None:
     plt.colorbar(Y_fft_im, ax=Y_fft_plot)
     plt.tight_layout()
     plt.show()
-    pass
 
 
 @dataclass
@@ -187,7 +186,7 @@ def main():
              r'T:\LT_data\Copper\2019-12-22\Grid Spectroscopy002.3ds']
     levels = [7]
     A_solved, X_solved = SBD.deconv_v1(files[0], (25, 25), level_list=levels)
-    pass
+    side_by_side(X_solved, A_solved)
 
 
 if __name__ == '__main__':
