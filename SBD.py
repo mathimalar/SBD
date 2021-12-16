@@ -20,56 +20,110 @@ from scipy import io
 from tqdm import tqdm
 from nanonispy.read import Grid
 from dataclasses import dataclass
+from abc import ABC, abstractmethod
+from dataclasses import field
 
 
 @dataclass
 class Measurement:
-    """
-    This class represents the measurement (in the grid object) along with its activation map and kernel
-    """
+    density_of_states: np.ndarray
+    kernel_size: (int, int)
+    topography: np.ndarray = None
+
+
+@dataclass
+class LabeledData:
+    kernel: np.ndarray
+    activation_map: np.ndarray
+
+
+@dataclass
+class DataHandler(ABC):
+    """Represents a generic data handler."""
+
+    @abstractmethod
+    def get_measurement_data(self) -> Measurement:
+        """Returns a measurement."""
+        pass
+
+
+@dataclass
+class LabeledDataHandler(DataHandler):
+    @abstractmethod
+    def get_labels(self) -> LabeledData:
+        """Returns labels for the measurement"""
+
+
+@dataclass
+class ThreeDSHandler(DataHandler):
+    """DataHandler that handles .3ds files"""
     grid: Grid
-    kernel: np.ndarray = None
-    activation_map: np.ndarray = None
-    _level_list: list = None
-    _kernel_shape: (int, int) = None
+    kernel_size: (int, int)
+    normalize: bool = False
+    index_list: list = None
 
-    @property
-    def kernel_shape(self):
-        return self._kernel_shape if self.kernel is None else np.shape(self.kernel)
+    def get_measurement_data(self) -> Measurement:
+        # If you chose to normalize the DoS using the current map
+        if self.normalize:
+            density_of_states = np.moveaxis(
+                np.divide(self.grid.signals['LIX 1 omega (A)'], self.grid.signals['Current (A)']), -1, 0)
+        else:
+            density_of_states = np.moveaxis(self.grid.signals['LIX 1 omega (A)'], -1, 0)
+        # If you only want part of the energy levels
+        if self.index_list is not None:
+            # Making sure all the given indexes exist in the DoS map
+            assert np.all(np.isin(self.index_list, [
+                *range(np.shape(density_of_states)[0])])), 'Not all the indeces in the list provided exist.'
+            density_of_states = [density_of_states[index] for index in self.index_list]
+        return Measurement(
+            density_of_states=density_of_states,
+            kernel_size=self.kernel_size,
+            topography=self.grid.signals['topo'])
 
-    @kernel_shape.setter
-    def kernel_shape(self, shape: (int, int)):
-        """Changes the shape of the kernel and crops it to the new shape"""
-        assert len(shape) == 2, 'Kernel shape has to be 2 numbers.'
-        self._kernel_shape = shape
-        if self.kernel is not None:
-            self.kernel = crop_to_center(self.kernel, shape)
 
-    @property
-    def topo(self):
-        return self.grid.signals['topo']
+@dataclass
+class SimulationHandler(LabeledDataHandler):
+    """DataHandler that handles simulated measurements."""
+    levels: int
+    measurement_size: (int, int)
+    kernel_size: (int, int)
+    defect_density: float
+    SNR: float
+    index_list: list = None
+    kernel: np.ndarray = field(init=False)
+    activation_map: np.ndarray = field(init=False)
+    density_of_states: np.ndarray = field(init=False)
 
-    @property
-    def DoS(self):
-        return np.moveaxis(self.grid.signals['LIX 1 omega (A)'], -1, 0)
+    def __post_init__(self):
+        self.density_of_states, self.kernel, self.activation_map = Y_factory(
+            s=self.levels,
+            Y_size=self.measurement_size,
+            A_size=self.kernel_size,
+            density=self.defect_density,
+            SNR=self.SNR)
 
-    @property
-    def DoS_over_I(self):
-        return np.moveaxis(np.divide(self.grid.signals['LIX 1 omega (A)'], self.grid.signals['Current (A)']), -1, 0)
+    def get_measurement_data(self) -> Measurement:
+        # If you only want part of the energy levels
+        if self.index_list is not None:
+            # Making sure all the given indexes exist in the DoS map
+            assert np.all(np.isin(self.index_list, [
+                *range(np.shape(self.density_of_states)[0])])), 'Not all the indeces in the list provided exist.'
+            self.density_of_states = np.array([self.density_of_states[index] for index in self.index_list])
+        return Measurement(
+            density_of_states=self.density_of_states,
+            kernel_size=self.kernel_size)
 
-    @property
-    def level_num(self):
-        return np.shape(self.grid.signals['LIX 1 omega (A)'])[-1] if self._level_list is None else len(self._level_list)
+    def get_labels(self) -> LabeledData:
+        return LabeledData(
+            kernel=self.kernel,
+            activation_map=self.activation_map)
 
-    @property
-    def level_list(self):
-        return [*range(self.level_num)] if self._level_list is None else self._level_list
 
-    @level_list.setter
-    def level_list(self, given_list):
-        assert np.all(np.isin(given_list, [*range(self.level_num), None])), \
-            f'Some of the levels in {given_list} the given list don\'t exist in the measurement'
-        self._level_list = given_list
+@dataclass
+class ProcessedData:
+    """Represents the output of the de-convolution process."""
+    recovered_kernel: np.ndarray
+    recovered_activation_map: np.ndarray
 
 
 def deconv_v0(Y, kernel_size, l_i, l_f, alpha):
@@ -110,36 +164,86 @@ def deconv_v0(Y, kernel_size, l_i, l_f, alpha):
     return A_out, X_out
 
 
-def deconv_v1(filename: str, kernel_shape: (int, int), topography=False, level_list=None) -> (np.ndarray, np.ndarray):
-    path = Path(filename)
-    assert path.is_file(), f'There is no file here: {path}'
-    assert path.with_suffix('.3ds'), 'The suffix must be .3ds'
-    measurement = Measurement(Grid(path))
-    measurement.kernel_shape = kernel_shape
-    measurement.level_list = level_list
+def deconv_v1(measurement: Measurement, use_topo=False) -> ProcessedData:
 
-    # Solving
-    X_solved = measurement_to_activation(measurement.topo if topography else measurement.DoS)
+    X_solved = measurement_to_activation(measurement, use_topo=False)
     A_solved = measurement_to_ker(measurement, X_solved)
 
-    return A_solved, X_solved
+    return ProcessedData(A_solved, X_solved)
 
 
-def measurement_to_ker(measurement: Measurement, X):
+def measurement_to_ker(measurement: Measurement, activation_map) -> np.ndarray:
+    """Takes a measurement and an activation map and returns the recovered kernel."""
     # Initial random guess
-    kernel_rnd = np.random.normal(0, 1, tuple(2 * m for m in measurement.kernel_shape))
+    kernel_rnd = np.random.normal(0, 1, tuple(2 * m for m in measurement.kernel_size))
     kernel_rnd = kernel_rnd / np.linalg.norm(kernel_rnd)  # Norm = 1
+    level_num, _, _ = np.shape(measurement.density_of_states)
+
     # Solving
-    kernel = np.zeros((measurement.level_num,) + tuple(2 * m for m in measurement.kernel_shape))
-    for i, level in enumerate(measurement.level_list):
+    kernel = np.zeros((level_num,) + tuple(2 * m for m in measurement.kernel_size))
+    dos = measurement.density_of_states
+    for i in range(level_num):
+        # Taking the random guess for the 1st level
         if i == 1:
-            kernel[i] = np.array(RTRM(1e-5, X, normalize_measurement(measurement.DoS[level]), kernel_rnd)[0])
+            kernel[i] = np.array(RTRM(1e-5, activation_map, normalize_measurement(dos[i]), kernel_rnd)[0])
+        # Using the i-1 kernel as 1st guess for the i-th kernel
         else:
-            kernel[i] = np.array(RTRM(1e-5, X, normalize_measurement(measurement.DoS[level]), kernel[i - 1])[0])
+            kernel[i] = np.array(RTRM(1e-5, activation_map, normalize_measurement(dos[i]), kernel[i - 1])[0])
 
     # Cropping and normalizing
-    kernel = crop_to_center(kernel, measurement.kernel_shape)
+    kernel = crop_to_center(kernel, measurement.kernel_size)
     return sphere_norm_by_layer(kernel)
+
+
+def measurement_to_activation(measurement: Measurement, model='lista', use_topo=False) -> np.ndarray:
+    """
+    Takes in a measurement object (and optionally use_topo flag) and returns the recovered activation map
+    """
+    dos = measurement.topography if use_topo else measurement.density_of_states
+    assert np.ndim(dos) in [2, 3], f'Your measurement has {np.ndim(dos)} dimensions'
+    # Loading the selected network
+    if model == 'cnn':
+        net = ActivationNet()
+        trained_model_path = Path('trained_model_norm.pt', map_location=torch.device('cpu'))
+    elif model == 'lista':
+        net = LISTA(5, iter_num=10)
+        trained_model_path = Path('trained_lista_5layers.pt', map_location=torch.device('cpu'))
+    if trained_model_path.is_file():
+        net.load_state_dict(torch.load(trained_model_path))
+        print('Loaded parameters from your trained model.')
+    else:
+        print('No trained model detected.')
+    net.eval()
+    net.cpu()
+    net.double()
+    mes_shape = np.shape(dos)
+
+    # If there are layers, it will calculate the mean activation map
+    if np.ndim(dos) == 3:
+        activations = np.zeros(mes_shape)
+
+        for level in range(mes_shape[0]):
+            temp_mes = dos[level]
+            temp_mes = temp_mes[np.newaxis, :, :]
+            measurement_tensor = ndarray_to_tensor(temp_mes)
+            temp_act = net(measurement_tensor)[0][0].data.numpy()
+
+            # This next bit is a filter to zero out all the small numbers in the map
+            # temp_act[temp_act < 10 * np.mean(temp_act)] = 0
+            temp_act = temp_act / np.sum(temp_act)
+            activations[level] = temp_act
+
+        activation = np.mean(activations, axis=0)
+
+    else:
+        measurement_tensor = ndarray_to_tensor(np.expand_dims(dos, 0))
+        activation = net(measurement_tensor)[0][0].data.numpy()
+
+    # Threshold: points under 100th of the max are set to zero
+    activation[activation < np.max(activation) / 100] = 0
+    activation = activation / np.sum(activation)
+    # activation = net(ndarray_to_tensor(np.expand_dims(activation, 0)))[0][0].data.numpy()
+    return activation
 
 
 def RTRM(lam_in, X_in, Y, A0, verbose=0):
@@ -219,54 +323,7 @@ def ndarray_to_tensor(array):
     return torch.tensor(array.astype(np.float)).unsqueeze(dim=0)
 
 
-def measurement_to_activation(measurement, model='lista'):
-    """
-    Takes in n1 by n2 torch tensor of a measurement and returns an n1 by n2 torch tensor of its activation map
-    """
-    assert np.ndim(measurement) in [2, 3], f'Your measurement has {np.ndim(measurement)} dimensions'
-    if model == 'cnn':
-        net = ActivationNet()
-        trained_model_path = Path('trained_model_norm.pt', map_location=torch.device('cpu'))
-    elif model == 'lista':
-        net = LISTA(5, iter_num=10)
-        trained_model_path = Path('trained_lista_5layers.pt', map_location=torch.device('cpu'))
-    if trained_model_path.is_file():
-        net.load_state_dict(torch.load(trained_model_path))
-        print('Loaded parameters from your trained model.')
-    else:
-        print('No trained model detected.')
-    net.eval()
-    net.cpu()
-    net.double()
-    mes_shape = np.shape(measurement)
-
-    if np.ndim(measurement) == 3:
-        activations = np.zeros(mes_shape)
-
-        for level in range(mes_shape[0]):
-            temp_mes = measurement[level]
-            temp_mes = temp_mes[np.newaxis, :, :]
-            measurement_tensor = ndarray_to_tensor(temp_mes)
-            temp_act = net(measurement_tensor)[0][0].data.numpy()
-
-            # This next bit is a filter to zero out all the small numbers in the map
-            # temp_act[temp_act < 10 * np.mean(temp_act)] = 0
-            temp_act = temp_act / np.sum(temp_act)
-            activations[level] = temp_act
-
-        activation = np.mean(activations, axis=0)
-
-    else:
-        measurement_tensor = ndarray_to_tensor(np.expand_dims(measurement, 0))
-        activation = net(measurement_tensor)[0][0].data.numpy()
-
-    activation[activation < np.max(activation) / 100] = 0
-    activation = activation / np.sum(activation)
-    # activation = net(ndarray_to_tensor(np.expand_dims(activation, 0)))[0][0].data.numpy()
-    return activation
-
-
-def Y_factory(s, Y_size, A_size, density, SNR=0):
+def Y_factory(s, Y_size, A_size, density, SNR: float = 0):
     """
     This function produces a QPI measurement with specified size, defect density, kernel size and number of levels
     """
@@ -319,9 +376,7 @@ def kernel_factory(s: int, m1: int, m2: int):
 
 def sphere_norm_by_layer(M):
     """
-    Returns your matrix normalized to the unit sphere.
-    :param M: A matrix with 3 dimensions
-    :return: M normalized such that the sum of it's elements squared is one.
+    Returns your matrix with each layer normalized to the unit sphere.
     """
     assert len(np.shape(M)) == 3, 'The matrix does not have 3 dim'
     return M / norm(M, axis=(-2, -1))[:, None, None]
