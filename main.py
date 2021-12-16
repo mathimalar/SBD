@@ -1,7 +1,7 @@
 from matplotlib import pyplot as plt
 import numpy as np
 import SBD
-from SBD import Measurement, SimulationHandler, ThreeDSHandler, ProcessedData
+from SBD import Measurement, SimulationHandler, ThreeDSHandler, ProcessedData, deconv_v1
 from dataclasses import dataclass
 import matplotlib.colors as colors
 from nanonispy.read import Grid
@@ -184,11 +184,13 @@ def main():
              r'T:\LT_data\TaAs\2016-01-01\Grid Spectroscopy002.3ds',
              r'T:\LT_data\TaAs\2016-01-04\Grid Spectroscopy002.3ds',
              r'T:\LT_data\Copper\2019-12-22\Grid Spectroscopy002.3ds']
-    handler = ThreeDSHandler(files[0], (32, 32), index_list=[7])
+    
+    kernel_size = (32, 32)
+    handler = ThreeDSHandler(files[0], kernel_size, index_list=[7])
     measurement = handler.get_measurement_data()
-    processed_data = SBD.deconv_v1(measurement)
+    processed_data = deconv_v1(measurement)
     side_by_side(processed_data.recovered_activation_map,
-                 processed_data.recovered_kernel,
+                 processed_data.recovered_kernel[0],
                  'result',
                  'activation',
                  'recovered kernel')
