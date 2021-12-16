@@ -1,6 +1,7 @@
 from matplotlib import pyplot as plt
 import numpy as np
 import SBD
+from SBD import Measurement, SimulationHandler, ThreeDSHandler, ProcessedData
 from dataclasses import dataclass
 import matplotlib.colors as colors
 from nanonispy.read import Grid
@@ -68,7 +69,6 @@ def illustrate(A_true, X_true, Y, A_solved, X_solved) -> None:
     A_solved_fft_plot.imshow(np.real(A_solved_fft), cmap='bwr', norm=colors.CenteredNorm())
 
     plt.show()
-    pass
 
 
 def test_deconv_v1(levels: int, mes_size, ker_size, density, SNR: float) -> bool:
@@ -184,9 +184,14 @@ def main():
              r'T:\LT_data\TaAs\2016-01-01\Grid Spectroscopy002.3ds',
              r'T:\LT_data\TaAs\2016-01-04\Grid Spectroscopy002.3ds',
              r'T:\LT_data\Copper\2019-12-22\Grid Spectroscopy002.3ds']
-    levels = [6, 7, 8]
-    A_solved, X_solved = SBD.deconv_v1(files[0], (25, 25), level_list=levels)
-    side_by_side(X_solved, A_solved, 'activation', 'recovered kernel')
+    handler = ThreeDSHandler(files[0], (32, 32), index_list=[7])
+    measurement = handler.get_measurement_data()
+    processed_data = SBD.deconv_v1(measurement)
+    side_by_side(processed_data.recovered_activation_map,
+                 processed_data.recovered_kernel,
+                 'result',
+                 'activation',
+                 'recovered kernel')
 
 
 if __name__ == '__main__':

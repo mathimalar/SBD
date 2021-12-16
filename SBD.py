@@ -57,10 +57,14 @@ class LabeledDataHandler(DataHandler):
 @dataclass
 class ThreeDSHandler(DataHandler):
     """DataHandler that handles .3ds files"""
-    grid: Grid
+    file_path: str
     kernel_size: (int, int)
     normalize: bool = False
     index_list: list = None
+    grid: Grid = field(init=False)
+
+    def __post_init__(self):
+        self.grid = Grid(self.file_path)
 
     def get_measurement_data(self) -> Measurement:
         # If you chose to normalize the DoS using the current map
@@ -165,7 +169,7 @@ def deconv_v0(Y, kernel_size, l_i, l_f, alpha):
 
 
 def deconv_v1(measurement: Measurement, use_topo=False) -> ProcessedData:
-
+    """Takes a measurement, de-convolves it and returns """
     X_solved = measurement_to_activation(measurement, use_topo=False)
     A_solved = measurement_to_ker(measurement, X_solved)
 
