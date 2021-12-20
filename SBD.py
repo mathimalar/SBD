@@ -3,6 +3,8 @@ import matplotlib.colors as colors
 import numpy as np
 import pylops as pl
 import random
+
+import scipy.stats
 from scipy import sparse
 from autograd.scipy.signal import convolve as aconvolve
 from scipy.signal import convolve
@@ -32,7 +34,7 @@ class Measurement:
 
 
 @dataclass
-class LabeledData:
+class DeconvolvedMeasurement:
     kernel: np.ndarray
     activation_map: np.ndarray
 
@@ -50,7 +52,7 @@ class DataHandler(ABC):
 @dataclass
 class LabeledDataHandler(DataHandler):
     @abstractmethod
-    def get_labels(self) -> LabeledData:
+    def get_labels(self) -> DeconvolvedMeasurement:
         """Returns labels for the measurement"""
 
 
@@ -91,8 +93,8 @@ class SimulationHandler(LabeledDataHandler):
     levels: int
     measurement_size: (int, int)
     kernel_size: (int, int)
-    defect_density: float
-    SNR: float
+    defect_density: float = 0.01
+    SNR: float = 1
     index_list: list = None
     kernel: np.ndarray = field(init=False)
     activation_map: np.ndarray = field(init=False)
@@ -117,17 +119,10 @@ class SimulationHandler(LabeledDataHandler):
             density_of_states=self.density_of_states,
             kernel_size=self.kernel_size)
 
-    def get_labels(self) -> LabeledData:
-        return LabeledData(
+    def get_labels(self) -> DeconvolvedMeasurement:
+        return DeconvolvedMeasurement(
             kernel=self.kernel,
             activation_map=self.activation_map)
-
-
-@dataclass
-class ProcessedData:
-    """Represents the output of the de-convolution process."""
-    recovered_kernel: np.ndarray
-    recovered_activation_map: np.ndarray
 
 
 def deconv_v0(Y, kernel_size, l_i, l_f, alpha):
@@ -168,12 +163,12 @@ def deconv_v0(Y, kernel_size, l_i, l_f, alpha):
     return A_out, X_out
 
 
-def deconv_v1(measurement: Measurement, use_topo=False) -> ProcessedData:
+def deconv_v1(measurement: Measurement, use_topo=False) -> DeconvolvedMeasurement:
     """Takes a measurement, de-convolves it and returns """
     X_solved = measurement_to_activation(measurement, use_topo=False)
     A_solved = measurement_to_ker(measurement, X_solved)
 
-    return ProcessedData(A_solved, X_solved)
+    return DeconvolvedMeasurement(A_solved, X_solved)
 
 
 def measurement_to_ker(measurement: Measurement, activation_map) -> np.ndarray:
@@ -237,7 +232,7 @@ def measurement_to_activation(measurement: Measurement, model='lista', use_topo=
             temp_act = temp_act / np.sum(temp_act)
             activations[level] = temp_act
 
-        activation = np.mean(activations, axis=0)
+        activation = combine_activation_maps(activations)
 
     else:
         measurement_tensor = ndarray_to_tensor(np.expand_dims(dos, 0))
@@ -247,6 +242,22 @@ def measurement_to_activation(measurement: Measurement, model='lista', use_topo=
     activation[activation < np.max(activation) / 100] = 0
     activation = activation / np.sum(activation)
     # activation = net(ndarray_to_tensor(np.expand_dims(activation, 0)))[0][0].data.numpy()
+    return activation
+
+
+def combine_activation_maps(activation_maps: np.ndarray) -> np.ndarray:
+    """This function takes a stack of activation maps and returns the masked median"""
+    assert np.ndim(activation_maps) == 3, f'The activation maps array has to have 3 dims, not {np.ndim(activation_maps)}'
+    level_num = np.shape(activation_maps)[0]
+    bool_maps = np.ones(np.shape(activation_maps), dtype=bool)
+
+    # Mask preparation
+    bool_maps = np.array([activ_map > np.max(activ_map)/100 for activ_map in activation_maps])
+    mask = scipy.stats.mode(bool_maps, axis=0)[0][0]
+
+    activation = np.median(activation_maps, axis=0)
+    activation = activation * mask
+    activation /= np.sum(activation)  # Normalize so sum will be 1
     return activation
 
 

@@ -1,7 +1,7 @@
 from matplotlib import pyplot as plt
 import numpy as np
 import SBD
-from SBD import Measurement, SimulationHandler, ThreeDSHandler, ProcessedData, deconv_v1
+from SBD import Measurement, SimulationHandler, ThreeDSHandler, DeconvolvedMeasurement, deconv_v1
 from dataclasses import dataclass
 import matplotlib.colors as colors
 from nanonispy.read import Grid
@@ -18,7 +18,6 @@ def side_by_side(M1, M2, figtitle, ax1_title, ax2_title):
         ax[i].set_axis_off()
     plt.tight_layout()
     plt.show()
-    pass
 
 
 def plot_benchmark(e_matrix, d_range, k_range) -> None:
@@ -32,7 +31,6 @@ def plot_benchmark(e_matrix, d_range, k_range) -> None:
     plt.xscale('log')
     plt.savefig('benchmark.jpg')
     plt.show()
-    pass
 
 
 def illustrate(A_true, X_true, Y, A_solved, X_solved) -> None:
@@ -186,13 +184,18 @@ def main():
              r'T:\LT_data\Copper\2019-12-22\Grid Spectroscopy002.3ds']
     
     kernel_size = (32, 32)
-    handler = ThreeDSHandler(files[0], kernel_size, index_list=[7])
+
+    handler = SimulationHandler(levels=5, measurement_size=(256, 256), kernel_size=kernel_size)
+
     measurement = handler.get_measurement_data()
-    processed_data = deconv_v1(measurement)
-    side_by_side(processed_data.recovered_activation_map,
-                 processed_data.recovered_kernel[0],
+    labels = handler.get_labels()
+
+    deconv_measurement = deconv_v1(measurement)
+
+    side_by_side(labels.kernel[0],
+                 deconv_measurement.kernel[0],
                  'result',
-                 'activation',
+                 'true kernel',
                  'recovered kernel')
 
 
