@@ -228,7 +228,7 @@ def measurement_to_activation(measurement: Measurement, model='lista', use_topo=
             temp_act = net(measurement_tensor)[0][0].data.numpy()
 
             # This next bit is a filter to zero out all the small numbers in the map
-            # temp_act[temp_act < 10 * np.mean(temp_act)] = 0
+            # temp_act[temp_act < np.max(temp_act) / 100] = 0
             temp_act = temp_act / np.sum(temp_act)
             activations[level] = temp_act
 
@@ -590,9 +590,12 @@ def normalize_measurement(Y):
     Normalizes the input such that mean[Y]=0 and STD[Y]=0.0025
     """
     return (0.0025 / np.std(Y)) * (Y - np.mean(Y))
-# measurement_shape = (1, 128, 128)
-# kernel_shape = (16, 16)
-#
-# # save_data(10000, measurement_shape, kernel_shape, training=True)
-# # save_data(2000, measurement_shape, kernel_shape, validation=True)
-# save_data(100, (1, 200, 200), (20, 20), testing=True)
+
+
+if __name__ == '__main__':
+    measurement_shape = (1, 128, 128)
+    kernel_shape = (16, 16)
+
+    # save_data(10000, measurement_shape, kernel_shape, training=True)
+    # save_data(2000, measurement_shape, kernel_shape, validation=True)
+    save_data(100, (1, 200, 200), (20, 20), testing=True)

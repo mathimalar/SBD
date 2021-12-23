@@ -3,109 +3,10 @@ import numpy as np
 import SBD
 from SBD import Measurement, SimulationHandler, ThreeDSHandler, DeconvolvedMeasurement, deconv_v1
 from dataclasses import dataclass
-import matplotlib.colors as colors
-from nanonispy.read import Grid
+import plotting
 
 
-def side_by_side(M1, M2, figtitle, ax1_title, ax2_title):
-    fig, ax = plt.subplots(1, 2, figsize=(12, 6))
-    fig.suptitle(figtitle)
-    ax[0].imshow(M1, cmap='hot')
-    ax[0].set_title(ax1_title)
-    ax[1].imshow(M2, cmap='hot')
-    ax[1].set_title(ax2_title)
-    for i in range(2):
-        ax[i].set_axis_off()
-    plt.tight_layout()
-    plt.show()
-
-
-def plot_benchmark(e_matrix, d_range, k_range) -> None:
-    D, K = np.meshgrid(d_range, k_range / 256)
-    im = plt.pcolormesh(D, K, e_matrix, cmap='jet', shading='auto')
-    cb = plt.colorbar()
-    cb.set_label(r'$\epsilon$', loc='bottom')
-    plt.xlabel('Defect density')
-    plt.ylabel(r'Kernel relative size $m/n$')
-    plt.clim(0, 1)
-    plt.xscale('log')
-    plt.savefig('benchmark.jpg')
-    plt.show()
-
-
-def illustrate(A_true, X_true, Y, A_solved, X_solved) -> None:
-    """
-    Plots a comparison figure for a simulated measurement
-    """
-    A_true_fft = np.fft.fftshift(np.fft.fft2(A_true, s=np.shape(Y)))
-    A_solved_fft = np.fft.fftshift(np.fft.fft2(A_solved, s=np.shape(Y)))
-    Y_fft = np.fft.fftshift(np.fft.fft2(Y, s=np.shape(Y)))
-
-    fig = plt.figure(figsize=(12, 6))
-    grid = plt.GridSpec(3, 8, wspace=0.2, hspace=0.3)
-
-    Y_plot = fig.add_subplot(grid[:-1, 2:-2])
-    Y_fft_plot = fig.add_subplot(grid[-1, 4:6])
-
-    A_true_plot = fig.add_subplot(grid[0, :2])
-    X_true_plot = fig.add_subplot(grid[1, :2])
-    A_true_fft_plot = fig.add_subplot(grid[2, :2])
-
-    A_solved_plot = fig.add_subplot(grid[0, -2:])
-    X_solved_plot = fig.add_subplot(grid[1, -2:])
-    A_solved_fft_plot = fig.add_subplot(grid[2, -2:])
-
-    Y_plot.imshow(Y, cmap='hot')
-    Y_fft_plot.imshow(np.real(Y_fft), cmap='bwr', norm=colors.CenteredNorm())
-
-    A_true_plot.imshow(A_true, cmap='hot')
-    X_true_plot.imshow(X_true.A != 0, cmap='hot')
-    A_true_fft_plot.imshow(np.real(A_true_fft), cmap='bwr', norm=colors.CenteredNorm())
-
-    A_solved_plot.imshow(A_solved, cmap='hot')
-    X_solved_plot.imshow(X_solved != 0, cmap='hot')
-    A_solved_fft_plot.imshow(np.real(A_solved_fft), cmap='bwr', norm=colors.CenteredNorm())
-
-    plt.show()
-
-
-def test_deconv_v1(levels: int, mes_size, ker_size, density, SNR: float) -> bool:
-    Y, A, X = SBD.Y_factory(levels, mes_size, ker_size, density, SNR)
-    A_solved, X_solved = SBD.deconv_v1(Y, ker_size)
-    # test if the loss is better than some random thing
-    raise NotImplementedError
-
-    # count0 = np.count_nonzero(X.A)
-    # count_guess = np.count_nonzero(X_guess)
-    #
-    # lista_error = SBD.recovery_error(A_solved[0], A[0])
-    # side_by_side(A_solved[0], A[0], f'LISTA Kernels. Error = {np.round(lista_error, 4)}', 'Predicted', 'True')
-    # SBD.compare_fft_plot(Y[0], A_solved[0], 'True FFT vs SBD FFT')
-
-
-def test_benchmark(load=False) -> bool:
-    """
-    Uses the benchmark function from SBD and checks if it returns positive numbers within [0,1]
-    """
-    bench_info = BenchmarkInfo(sample_num=20,
-                               resolution=20,
-                               max_defect_density=0.5,
-                               min_defect_density=0.5 * (10 ** -4),
-                               max_kernel_size=62,
-                               min_kernel_size=8)
-    if load:
-        error_matrix = np.load(f'benchmark_{bench_info.resolution}_{bench_info.sample_num}.npy')
-    else:
-        error_matrix = SBD.benchmark(model='lista',
-                                     defect_density_range=bench_info.defect_range(),
-                                     kernel_size_range=bench_info.kernel_range(),
-                                     samples=bench_info.sample_num)
-        error_matrix = np.save(f'benchmark_{bench_info.resolution}_{bench_info.sample_num}', error_matrix)
-    plot_benchmark(error_matrix, bench_info.defect_range(), bench_info.kernel_range())
-    return np.all(error_matrix >= 0) and np.all(error_matrix <= 1)
-
-
-def plot_fft(A, X, Y, level) -> None:
+def plot_fft_save(A, X, Y, level) -> None:
     """
     Plotting the measurement (big), the kernel and activation maps, and the measurements FFT along with the kernel FFT.
     """
@@ -141,8 +42,8 @@ def plot_fft(A, X, Y, level) -> None:
 
     Y_plot.imshow(Y[level], cmap='hot')
 
-    Y_fft_im = Y_fft_plot.imshow(np.abs(Y_fft), cmap='afmhot')
-    A_fft_im = A_fft_plot.imshow(np.abs(A_fft), cmap='afmhot')
+    Y_fft_im = Y_fft_plot.imshow(np.abs(Y_fft), cmap='afmhot')  # Should be logarithmic?
+    A_fft_im = A_fft_plot.imshow(np.abs(A_fft), cmap='afmhot')  # Should be logarithmic?
     A_plot.imshow(A[level], cmap='hot')
     X_plot.imshow(X == 0, cmap='binary', interpolation='None')
 
@@ -150,6 +51,42 @@ def plot_fft(A, X, Y, level) -> None:
     plt.colorbar(Y_fft_im, ax=Y_fft_plot)
     plt.tight_layout()
     plt.show()
+
+
+def test_deconv_v1(levels: int, mes_size, ker_size, density, SNR: float) -> bool:
+    Y, A, X = SBD.Y_factory(levels, mes_size, ker_size, density, SNR)
+    A_solved, X_solved = SBD.deconv_v1(Y, ker_size)
+    # test if the loss is better than some random thing
+    raise NotImplementedError
+
+    # count0 = np.count_nonzero(X.A)
+    # count_guess = np.count_nonzero(X_guess)
+    #
+    # lista_error = SBD.recovery_error(A_solved[0], A[0])
+    # side_by_side(A_solved[0], A[0], f'LISTA Kernels. Error = {np.round(lista_error, 4)}', 'Predicted', 'True')
+    # SBD.compare_fft_plot(Y[0], A_solved[0], 'True FFT vs SBD FFT')
+
+
+def test_benchmark(load=False) -> bool:
+    """
+    Uses the benchmark function from SBD and checks if it returns positive numbers within [0,1]
+    """
+    bench_info = BenchmarkInfo(sample_num=20,
+                               resolution=20,
+                               max_defect_density=0.5,
+                               min_defect_density=0.5 * (10 ** -4),
+                               max_kernel_size=62,
+                               min_kernel_size=8)
+    if load:
+        error_matrix = np.load(f'benchmark_{bench_info.resolution}_{bench_info.sample_num}.npy')
+    else:
+        error_matrix = SBD.benchmark(model='lista',
+                                     defect_density_range=bench_info.defect_range(),
+                                     kernel_size_range=bench_info.kernel_range(),
+                                     samples=bench_info.sample_num)
+        error_matrix = np.save(f'benchmark_{bench_info.resolution}_{bench_info.sample_num}', error_matrix)
+    plotting.plot_benchmark(error_matrix, bench_info.defect_range(), bench_info.kernel_range())
+    return np.all(error_matrix >= 0) and np.all(error_matrix <= 1)
 
 
 @dataclass
@@ -181,22 +118,16 @@ def main():
     files = [r'T:\LT_data\TaAs\2015-12-08\Grid Spectroscopy001.3ds',
              r'T:\LT_data\TaAs\2016-01-01\Grid Spectroscopy002.3ds',
              r'T:\LT_data\TaAs\2016-01-04\Grid Spectroscopy002.3ds',
-             r'T:\LT_data\Copper\2019-12-22\Grid Spectroscopy002.3ds']
-    
-    kernel_size = (32, 32)
+             r'T:\LT_data\Copper\2019-12-22\Grid Spectroscopy002.3ds',
+             r'T:\LT_data\Copper\2014-03-20\Grid Spectroscopy002.3ds']
 
-    handler = SimulationHandler(levels=5, measurement_size=(256, 256), kernel_size=kernel_size)
+    kernel_size = (64, 64)
 
-    measurement = handler.get_measurement_data()
-    labels = handler.get_labels()
-
-    deconv_measurement = deconv_v1(measurement)
-
-    side_by_side(labels.kernel[0],
-                 deconv_measurement.kernel[0],
-                 'result',
-                 'true kernel',
-                 'recovered kernel')
+    handler1 = ThreeDSHandler(files[4], kernel_size)
+    handler2 = SimulationHandler(5, (300, 300), kernel_size, SNR=20, defect_density=0.001)
+    measurement = handler2.get_measurement_data()
+    # deconv_measurement = deconv_v1(measurement)
+    plotting.plot_fft(handler2.kernel, handler2.activation_map, measurement.density_of_states)
 
 
 if __name__ == '__main__':
@@ -303,5 +234,3 @@ if __name__ == '__main__':
     # A_conv_X = Cop * X_layers.flatten()
     # A_conv_X = A_conv_X.reshape((levels, n1, n2))
     # side_by_side(Y[0], A_conv_X[0], 'convolution test')
-
-
