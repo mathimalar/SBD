@@ -67,7 +67,7 @@ def compute_loss(dataloader, network, loss_function):
 
             loss += loss_function(act_pred, act, ker, mes)
 
-    loss = loss / n_batches
+    loss /= n_batches
     return loss
 
 
@@ -129,10 +129,11 @@ for epoch in pbar:
         if torch.cuda.is_available():
             measurement = measurement.cuda()
             kernel = kernel.cuda()
-
+        torch.autograd.set_detect_anomaly(True)
         optimizer.zero_grad()
         pred_activation = net(measurement)
         loss = loss_func(pred_activation, activation, kernel, measurement)
+
         loss.backward()
         optimizer.step()
 

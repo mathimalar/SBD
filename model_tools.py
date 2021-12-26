@@ -31,7 +31,6 @@ def plot_conv(kernel_in, activation_in, target_in):
     for i in range(4):
         ax[i].set_axis_off()
     plt.show()
-    pass
 
 
 def smooth_abs(x, eps=1e-18):
@@ -49,16 +48,18 @@ def normalize_tensor_0to1(t):
     return t.view(shape)
 
 
-def normalize_tensor_sumto1(t):
+def normalize_tensor_sumto1(t: torch.Tensor):
     """
     Normalizes a tensor such that the data in each sample in the batch will sum to 1.
     """
-    shape = t.size()
-    t = t.view(t.size(0), -1)
-    sum_tensor = t.sum(1, keepdim=True)
-    sum_tensor[sum_tensor == 0] = 1
-    t /= sum_tensor
-    return t.view(shape)
+    norm = t.sum(dim=1, keepdim=True)
+    norm[norm == 0] = 1
+    # shape = t.size()
+    # t_out = t.view(t.size(0), -1)
+    # sum_tensor = t_out.sum(1, keepdim=True)
+    # sum_tensor[sum_tensor == 0] = 1
+    # t_out /= sum_tensor
+    return t/norm
 
 
 class ActivationLoss(nn.Module):
@@ -70,7 +71,7 @@ class ActivationLoss(nn.Module):
     def regulator(self, activation):
         return torch.sum(self.mu ** 2 * (torch.sqrt(1 + (self.mu ** -2) * torch.abs(activation)) - 1))
 
-    def forward(self, activation_pred, activation, kernel, target):
+    def forward(self, activation_pred, activation, kernel, target=None):
         conv_pred = []
         conv_target = []
         for i in range(activation_pred.shape[0]):

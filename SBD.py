@@ -562,13 +562,14 @@ def save_data(number_of_samples, measurement_size, kernel_size, SNR=2, training=
     density_exponent = np.random.uniform(low=-3.5, high=-1.5, size=(number_of_samples,))
 
     E, n1, n2 = measurement_size
+    # sample_ker_size = np.random.randint(low=kernel_size[0] / 2, high=kernel_size[0] * 2, size=number_of_samples)
+    sample_SNR = np.random.uniform(SNR / 2, 5 * SNR, number_of_samples)
+
     for i in range(number_of_samples):
-        # sample_ker_size = int(np.random.uniform(kernel_size[0]/2, kernel_size[0]*2))
-        sample_SNR = np.random.uniform(SNR / 2, 5 * SNR)
         temp_measurement, temp_kernel, temp_activation_map = Y_factory(E, (n1, n2),
                                                                        kernel_size,
                                                                        10 ** density_exponent[i],
-                                                                       sample_SNR)
+                                                                       sample_SNR[i])
         if training:
             np.save(os.getcwd() + '/training_dataset/kernel_%d' % i, temp_kernel)
             np.save(os.getcwd() + '/training_dataset/measurement_%d' % i, temp_measurement)
@@ -596,6 +597,6 @@ if __name__ == '__main__':
     measurement_shape = (1, 128, 128)
     kernel_shape = (16, 16)
 
-    # save_data(10000, measurement_shape, kernel_shape, training=True)
-    # save_data(2000, measurement_shape, kernel_shape, validation=True)
+    save_data(10000, measurement_shape, kernel_shape, training=True)
+    save_data(2000, measurement_shape, kernel_shape, validation=True)
     save_data(100, (1, 200, 200), (20, 20), testing=True)
