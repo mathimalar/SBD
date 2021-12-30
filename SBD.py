@@ -95,6 +95,7 @@ class SimulationHandler(LabeledDataHandler):
     kernel_size: (int, int)
     defect_density: float = 0.01
     SNR: float = 1
+    lattice_structure: str = None
     index_list: list = None
     kernel: np.ndarray = field(init=False)
     activation_map: np.ndarray = field(init=False)
@@ -106,7 +107,8 @@ class SimulationHandler(LabeledDataHandler):
             Y_size=self.measurement_size,
             A_size=self.kernel_size,
             density=self.defect_density,
-            SNR=self.SNR)
+            SNR=self.SNR,
+            lattice_structure=self.lattice_structure)
 
     def get_measurement_data(self) -> Measurement:
         # If you only want part of the energy levels
@@ -247,12 +249,13 @@ def measurement_to_activation(measurement: Measurement, model='lista', use_topo=
 
 def combine_activation_maps(activation_maps: np.ndarray) -> np.ndarray:
     """This function takes a stack of activation maps and returns the masked median"""
-    assert np.ndim(activation_maps) == 3, f'The activation maps array has to have 3 dims, not {np.ndim(activation_maps)}'
+    assert np.ndim(
+        activation_maps) == 3, f'The activation maps array has to have 3 dims, not {np.ndim(activation_maps)}'
     level_num = np.shape(activation_maps)[0]
     bool_maps = np.ones(np.shape(activation_maps), dtype=bool)
 
     # Mask preparation
-    bool_maps = np.array([activ_map > np.max(activ_map)/100 for activ_map in activation_maps])
+    bool_maps = np.array([activ_map > np.max(activ_map) / 100 for activ_map in activation_maps])
     mask = scipy.stats.mode(bool_maps, axis=0)[0][0]
 
     activation = np.median(activation_maps, axis=0)
@@ -338,7 +341,7 @@ def ndarray_to_tensor(array):
     return torch.tensor(array.astype(np.float)).unsqueeze(dim=0)
 
 
-def Y_factory(s, Y_size, A_size, density, SNR: float = 0):
+def Y_factory(s, Y_size, A_size, density, SNR: float = 1, lattice_structure=None):
     """
     This function produces a QPI measurement with specified size, defect density, kernel size and number of levels
     """
@@ -347,14 +350,18 @@ def Y_factory(s, Y_size, A_size, density, SNR: float = 0):
     A = kernel_factory(s, m1, m2)
     X = sparse.random(n1, n2, density)
     X = X / np.sum(X)
-    Y = np.zeros([s, n1, n2])
 
-    for level in range(s):
-        Y[level] = convolve(X.A, A[level], mode='same')
-        eta = np.var(Y[level]) / SNR
-        noise = np.random.normal(0, np.sqrt(eta), (n1, n2))
-        Y[level] += noise
+    signal = np.array([convolve(X.A, A[level], mode='same') for level in range(s)])
+    signal_var = np.var(signal, axis=(-2, -1))
+    noise_var = signal_var / SNR
+    noise = np.random.normal(0, 1, size=(s, n1, n2)) * np.sqrt(noise_var)[:, None, None]
 
+    if lattice_structure is None:
+        Y = signal + noise
+    else:
+        lattice = lattice_background(s, Y_size, A_size, lattice_structure)
+        lattice *= np.sqrt(noise_var / np.var(lattice))[:, None, None]  # Makes lattice var the same as noise_var
+        Y = signal + (noise + lattice) / np.sqrt(2)  # Makes the total non-signal var: signal_var / SNR
     return Y, A, X
 
 
@@ -384,9 +391,39 @@ def kernel_factory(s: int, m1: int, m2: int):
             A[i, :, :] += np.cos(2 * np.pi * k[i, direction % half_sym] * r) * decay
 
     # Normalizing:
-    A = np.abs(A)
+    # A = np.abs(A)
     A = sphere_norm_by_layer(A)
     return A
+
+
+def lattice_background(s: int, measurement_size: (int, int), kernel_size: (int, int),
+                       structure: str = None) -> np.ndarray:
+    """
+    Generates a square lattice background in a given size
+    """
+    m_max = np.max(kernel_size)
+    aspect_ratio = measurement_size[0] / measurement_size[1]
+    atoms_in_kernel = np.random.uniform(0.9, 3)
+    lambda_lattice = (np.max(kernel_size) / np.max(measurement_size)) / (2 * atoms_in_kernel)
+    background = np.zeros((s, measurement_size[0], measurement_size[1]))
+    x, y = np.meshgrid(np.linspace(-1, 1, measurement_size[1]),
+                       np.linspace(-aspect_ratio, aspect_ratio, measurement_size[0]))  # Add nm scale instead of [-1,1]?
+    theta = np.arctan(y / x)
+    r = np.sqrt(x ** 2 + y ** 2)
+    arb_angle = np.random.uniform(0, np.pi)
+    d_theta = theta - arb_angle
+    if structure is None:
+        structure = random.choice(['square', 'honeycomb'])
+    if structure == 'square':
+        dir1, dir2 = r * np.cos(d_theta), r * np.sin(d_theta)
+        k1, k2 = 2 * np.pi / lambda_lattice, 2 * np.pi / lambda_lattice
+        background = np.array([np.cos(dir1 * k1) + np.cos(dir2 * k2) for _ in range(s)])
+    elif structure == 'honeycomb':
+        dir1, dir2, dir3 = r * np.cos(d_theta), r * np.cos(2 * np.pi / 3 - d_theta), r * np.cos(2 * np.pi / 3 + d_theta)
+        k1, k2, k3 = 2 * np.pi / lambda_lattice, 2 * np.pi / lambda_lattice, 2 * np.pi / lambda_lattice
+        background = np.array([np.cos(dir1 * k1) + np.cos(dir2 * k2) + np.cos(dir3 * k3) for _ in range(s)])
+    background = sphere_norm_by_layer(background)
+    return background
 
 
 def sphere_norm_by_layer(M):

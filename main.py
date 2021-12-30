@@ -122,12 +122,16 @@ def main():
              r'T:\LT_data\Copper\2014-03-20\Grid Spectroscopy002.3ds']
 
     kernel_size = (64, 64)
+    measurement_size = (300, 300)
+    energy_level_num = 5
 
     handler1 = ThreeDSHandler(files[4], kernel_size)
-    handler2 = SimulationHandler(5, (300, 300), kernel_size, SNR=20, defect_density=0.001)
-    measurement = handler2.get_measurement_data()
+    handler2 = SimulationHandler(energy_level_num, measurement_size, kernel_size,
+                                 SNR=20, defect_density=0.001,
+                                 lattice_structure='honeycomb')
+    measurement2 = handler2.get_measurement_data()
     # deconv_measurement = deconv_v1(measurement)
-    plotting.plot_fft(handler2.kernel, handler2.activation_map, measurement.density_of_states)
+    plotting.plot_fft(handler2.kernel, handler2.activation_map, measurement2.density_of_states)
 
 
 if __name__ == '__main__':
