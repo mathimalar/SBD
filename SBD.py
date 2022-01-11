@@ -630,6 +630,44 @@ def normalize_measurement(Y):
     return (0.0025 / np.std(Y)) * (Y - np.mean(Y))
 
 
+def plane_fit(matrix: np.ndarray, plot: bool = False) -> np.ndarray:
+    m_max, m_min = np.max(matrix), np.min(matrix)
+    m1, m2 = matrix.shape
+    x1, x2 = np.mgrid[:m1, :m2]
+
+    # Normalizing:
+    norm_matrix = (matrix - m_min)/(m_max - m_min)
+
+    X = np.hstack((np.reshape(x1, (m1 * m2, 1)), np.reshape(x2, (m1 * m2, 1))))
+    X = np.hstack((np.ones((m1 * m2, 1)), X))
+    YY = np.reshape(norm_matrix, (m1 * m2, 1))
+
+    # Regression through the normal equation
+    theta = np.dot(np.dot(np.linalg.pinv(np.dot(X.transpose(), X)), X.transpose()), YY)
+
+    plane = np.reshape(np.dot(X, theta), (m1, m2))
+
+    # Plotting:
+    if plot:
+        plot_plane(x1, x2, norm_matrix, plane)
+    return plane
+
+
+def plot_plane(x1, x2, norm_matrix, plane):
+    fig = plt.figure()
+    ax = fig.add_subplot(3, 1, 1, projection='3d')
+    jet = plt.get_cmap('jet')
+    ax.plot_surface(x1, x2, norm_matrix, rstride=1, cstride=1, cmap=jet, linewidth=0)
+    ax = fig.add_subplot(3, 1, 2, projection='3d')
+    ax.plot_surface(x1, x2, plane)
+    ax.plot_surface(x1, x2, norm_matrix, rstride=1, cstride=1, cmap=jet, linewidth=0)
+
+    Y_sub = norm_matrix - plane
+    ax = fig.add_subplot(3, 1, 3, projection='3d')
+    ax.plot_surface(x1, x2, Y_sub, rstride=1, cstride=1, cmap=jet, linewidth=0)
+    plt.show()
+
+
 if __name__ == '__main__':
     measurement_shape = (1, 128, 128)
     kernel_shape = (16, 16)

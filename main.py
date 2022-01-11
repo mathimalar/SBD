@@ -125,13 +125,19 @@ def main():
     measurement_size = (300, 300)
     energy_level_num = 5
 
-    handler1 = ThreeDSHandler(files[4], kernel_size)
-    handler2 = SimulationHandler(energy_level_num, measurement_size, kernel_size,
-                                 SNR=20, defect_density=0.001,
-                                 lattice_structure='honeycomb')
-    measurement2 = handler2.get_measurement_data()
+    DS_handler = ThreeDSHandler(files[4], kernel_size)
+    SIM_handler2 = SimulationHandler(energy_level_num, measurement_size, kernel_size,
+                                     SNR=20, defect_density=0.001,
+                                     lattice_structure='honeycomb')
+    real_measurement = DS_handler.get_measurement_data()
+    sim_measurement = SIM_handler2.get_measurement_data()
+    topo_plane = SBD.plane_fit(real_measurement.topography)
+    norm_topo = real_measurement.topography - np.min(real_measurement.topography)
+    norm_topo = norm_topo / (np.max(norm_topo) - np.min(norm_topo))
+    plt.imshow(norm_topo - topo_plane)
+    plt.show()
     # deconv_measurement = deconv_v1(measurement)
-    plotting.plot_fft(handler2.kernel, handler2.activation_map, measurement2.density_of_states)
+    plotting.plot_fft(SIM_handler2.kernel, SIM_handler2.activation_map, sim_measurement.density_of_states)
 
 
 if __name__ == '__main__':
