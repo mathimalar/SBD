@@ -178,6 +178,7 @@ class ActivationLoss(nn.Module):
         conv_pred_stack = torch.stack(conv_pred, dim=0).squeeze(dim=1)
         conv_target_stack = torch.stack(conv_target, dim=0).squeeze(dim=1)
         regulation_term = smooth_abs(self.regulator(activation_pred) - self.regulator(activation))
+
         loss = F.huber_loss(conv_pred_stack, conv_target_stack) / 2
         loss += self.r * regulation_term
         # loss += (self.r * 10 ** - 4) * torch.abs(torch.count_nonzero(activation) - torch.count_nonzero(activation_pred)) / torch.count_nonzero(activation)

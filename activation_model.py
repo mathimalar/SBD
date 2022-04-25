@@ -6,7 +6,7 @@ from torchvision import transforms
 from torch.utils.data import DataLoader, random_split
 import pytorch_lightning as pl
 from model_tools import ActivationLoss
-import model_tools
+from SBD import save_data
 from dataset import QPIDataSet
 from matplotlib import pyplot as plt
 import numpy as np
@@ -44,9 +44,9 @@ class QPIDataModule(pl.LightningDataModule):
         measurement_shape = (1, 128, 128)
         kernel_shape = (16, 16)
 
-        model_tools.save_data(20000, measurement_shape, kernel_shape, training=True)
-        model_tools.save_data(1000, measurement_shape, kernel_shape, validation=True)
-        model_tools.save_data(500, measurement_shape, kernel_shape, testing=True)
+        save_data(20000, measurement_shape, kernel_shape, training=True)
+        save_data(1000, measurement_shape, kernel_shape, validation=True)
+        save_data(500, measurement_shape, kernel_shape, testing=True)
 
     def setup(self, stage=None):
         # called on every GPU

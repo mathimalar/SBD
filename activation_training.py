@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from model_tools import ActivationLoss
 from dataset import QPIDataSet
-from model import KerNet, ActivationNet, ActivationResNet, ActivationSmiResNet, LISTA
+from model import ActivationNet, LISTA
 from torch.optim import Adam
 from tqdm import tqdm
 import os
@@ -13,7 +13,7 @@ from pathlib import Path
 from matplotlib import pyplot as plt
 
 
-def plot_result(val_vs_epoch, training_vs_epoch):
+def plot_result(val_vs_epoch, training_vs_epoch, folder=None):
     plt.plot(val_vs_epoch, label='Validation', alpha=0.5)
     plt.plot(training_vs_epoch, label='Training', alpha=0.5)
     plt.ylabel('Loss')
@@ -21,11 +21,12 @@ def plot_result(val_vs_epoch, training_vs_epoch):
     plt.legend()
     plt.xlabel('Epoch number')
     plt.tight_layout()
-    plt.savefig('loss_vs_epoch')
+    fig_path = 'loss_vs_epoch' if folder is None else f'{folder}/loss_vs_epoch'
+    plt.savefig(fig_path)
     plt.show()
 
 
-def plot_example(dataset, network, idx):
+def plot_example(dataset, network, idx, folder=None):
     meas, ker, act = dataset[idx]
 
     fig, ax = plt.subplots(1, 3, figsize=(9, 3), dpi=150)
@@ -44,7 +45,8 @@ def plot_example(dataset, network, idx):
 
     for i in range(3):
         ax[i].set_axis_off()
-    plt.savefig(f'Pred{idx}')
+    path_name = Path(f'Pred{idx}') if folder is None else Path(f'{folder}/Pred{idx}')
+    plt.savefig(path_name)
 
 
 def compute_loss(dataloader, network, loss_function):
@@ -73,8 +75,8 @@ def compute_loss(dataloader, network, loss_function):
 
 print('Loading QPI datasets.')
 batch_size = 20
-train_ds = QPIDataSet(os.getcwd() + '/training_dataset')
-valid_ds = QPIDataSet(os.getcwd() + '/validation_dataset')
+train_ds = QPIDataSet(f'{os.getcwd()}/training_dataset')
+valid_ds = QPIDataSet(f'{os.getcwd()}/validation_dataset')
 training_dataloader = DataLoader(train_ds, batch_size=batch_size)
 valid_dataloader = DataLoader(valid_ds, batch_size=batch_size)
 
@@ -82,7 +84,7 @@ valid_dataloader = DataLoader(valid_ds, batch_size=batch_size)
 layer_number = 5
 net = LISTA(layer_number)
 # net = ActivationNet()
-optimizer = Adam(net.parameters(), lr=1e-3)  # Increased from 1e-4 to 1e-3, maybe not a good idea
+optimizer = Adam(net.parameters(), lr=1e-4)  # Increased from 1e-4 to 1e-3, maybe not a good idea
 scheduler = ReduceLROnPlateau(optimizer)  # Will reduce learning rate after 10 epochs with no improvement
 sparsity = 0.01
 loss_func = ActivationLoss(sparsity)
@@ -103,8 +105,8 @@ if trained_model_path.is_file():
 
 # Training loop:
 
-
-n_epochs = 3000
+folder = f'lista{layer_number}layers'
+n_epochs = 100
 
 if torch.cuda.is_available():
     net.cuda()
@@ -153,13 +155,15 @@ for epoch in pbar:
     # if there is no improvement in the last fraction of the epochs, stop training.
     no_improvement_ratio = (len(validation_loss_vs_epoch) - np.argmin(validation_loss_vs_epoch)) / len(validation_loss_vs_epoch)
     if epoch > 100 and no_improvement_ratio > 1/3:
-        print(f'No improvement seen in the last third. Stopped training.')
+        print('No improvement seen in the last third. Stopped training.')
         break
+    plot_result(validation_loss_vs_epoch, training_loss_vs_epoch, folder=folder)
+
 
 # Plotting results
-plot_result(validation_loss_vs_epoch, training_loss_vs_epoch)
+plot_result(validation_loss_vs_epoch, training_loss_vs_epoch, folder=folder)
 
 # Plot one example for reference
 idxs = np.random.choice(valid_ds.length, 10, replace=False)
 for i in idxs:
-    plot_example(valid_ds, net, i)
+    plot_example(valid_ds, net, i, folder=folder)
