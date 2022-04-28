@@ -1,12 +1,15 @@
 import torch.jit
 import matplotlib.pyplot as plt
-from activation_model import ActivationSys, QPIDataModule
+from pl_model import ActivationSys, QPIDataModule
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ProgressBar
 from argparse import ArgumentParser
 
 
 def main(args):
+    """
+    This function trains the pytorch lightning model found in pl_model file
+    """
     qpi_dm = QPIDataModule()
     model = ActivationSys()
     model.load_state_dict(torch.load('trained_model_norm.pt'))

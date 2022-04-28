@@ -264,7 +264,7 @@ def combine_activation_maps(activation_maps: np.ndarray) -> np.ndarray:
     return activation
 
 
-def RTRM(lam_in, X_in, Y, A0, verbose=0):
+def RTRM(lam_in, X_in, Y, A0, mingradnorm=5e-7, maxtime=2 * 60, verbose=0):
     """
     Minimizing A for cost_fun using Riemannian Trust-Region Method (RTRM) over the sphere.
     :param lam_in: Sparsity parameter
@@ -284,7 +284,7 @@ def RTRM(lam_in, X_in, Y, A0, verbose=0):
 
     problem = Problem(manifold=sphere, cost=cost)
     # 3. Solving
-    solver = TrustRegions(mingradnorm=5e-6, maxtime=1.5 * 60, logverbosity=verbose)
+    solver = TrustRegions(mingradnorm=mingradnorm, maxtime=maxtime, logverbosity=verbose)
     A_out = solver.solve(problem, x=A_in)
     return A_out
 

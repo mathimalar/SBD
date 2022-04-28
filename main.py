@@ -6,53 +6,6 @@ from dataclasses import dataclass
 import plotting
 
 
-def plot_fft_save(A, X, Y, level) -> None:
-    """
-    Plotting the measurement (big), the kernel and activation maps, and the measurements FFT along with the kernel FFT.
-    """
-    A_fft = np.fft.fftshift(np.fft.fft2(A[level], s=np.shape(Y[level])))
-    Y_fft = np.fft.fftshift(np.fft.fft2(SBD.normalize_measurement(Y[level]), s=np.shape(Y[level])))
-
-    fig = plt.figure(figsize=(12, 6))
-    grid = plt.GridSpec(2, 4, wspace=0.2, hspace=0.3)
-
-    Y_plot = fig.add_subplot(grid[:, :2])
-    Y_plot.set_title(f'Measurement at slice: {level}')
-    Y_plot.axis('off')
-
-    Y_fft_plot = fig.add_subplot(grid[1, 2])
-    Y_fft_plot.set_title('FFT(Y) Abs')
-    Y_fft_plot.get_yaxis().set_visible(False)
-    Y_fft_plot.get_xaxis().set_visible(False)
-
-    A_fft_plot = fig.add_subplot(grid[1, 3])
-    A_fft_plot.set_title('Kernel FFT')
-    A_fft_plot.get_yaxis().set_visible(False)
-    A_fft_plot.get_xaxis().set_visible(False)
-
-    A_plot = fig.add_subplot(grid[0, 2])
-    A_plot.set_title('Recovered kernel')
-    A_plot.get_yaxis().set_visible(False)
-    A_plot.get_xaxis().set_visible(False)
-
-    X_plot = fig.add_subplot(grid[0, 3])
-    X_plot.set_title('Activation map')
-    X_plot.get_yaxis().set_visible(False)
-    X_plot.get_xaxis().set_visible(False)
-
-    Y_plot.imshow(Y[level], cmap='hot')
-
-    Y_fft_im = Y_fft_plot.imshow(np.abs(Y_fft), cmap='afmhot')  # Should be logarithmic?
-    A_fft_im = A_fft_plot.imshow(np.abs(A_fft), cmap='afmhot')  # Should be logarithmic?
-    A_plot.imshow(A[level], cmap='hot')
-    X_plot.imshow(X == 0, cmap='binary', interpolation='None')
-
-    plt.colorbar(A_fft_im, ax=A_fft_plot)
-    plt.colorbar(Y_fft_im, ax=Y_fft_plot)
-    plt.tight_layout()
-    plt.show()
-
-
 def test_deconv_v1(levels: int, mes_size, ker_size, density, SNR: float) -> bool:
     Y, A, X = SBD.Y_factory(levels, mes_size, ker_size, density, SNR)
     A_solved, X_solved = SBD.deconv_v1(Y, ker_size)
@@ -115,29 +68,33 @@ class BenchmarkInfo:
 
 
 def main():
-    files = [r'T:\LT_data\TaAs\2015-12-08\Grid Spectroscopy001.3ds',
+    # An example list of files to analyze
+    three_ds_paths = [r'T:\LT_data\TaAs\2015-12-08\Grid Spectroscopy001.3ds',
              r'T:\LT_data\TaAs\2016-01-01\Grid Spectroscopy002.3ds',
              r'T:\LT_data\TaAs\2016-01-04\Grid Spectroscopy002.3ds',
              r'T:\LT_data\Copper\2019-12-22\Grid Spectroscopy002.3ds',
              r'T:\LT_data\Copper\2014-03-20\Grid Spectroscopy002.3ds']
 
-    kernel_size = (64, 64)
+    kernel_size = (32, 32)  # Required
+
     measurement_size = (300, 300)
     energy_level_num = 5
 
-    DS_handler = ThreeDSHandler(files[4], kernel_size)
+    DS_handler = ThreeDSHandler(three_ds_paths[4], kernel_size)
     SIM_handler2 = SimulationHandler(energy_level_num, measurement_size, kernel_size,
-                                     SNR=20, defect_density=0.001,
-                                     lattice_structure='honeycomb')
+                                     SNR=20, defect_density=0.005)
     real_measurement = DS_handler.get_measurement_data()
     sim_measurement = SIM_handler2.get_measurement_data()
-    topo_plane = SBD.plane_fit(real_measurement.topography)
-    norm_topo = real_measurement.topography - np.min(real_measurement.topography)
-    norm_topo = norm_topo / (np.max(norm_topo) - np.min(norm_topo))
-    plt.imshow(norm_topo - topo_plane)
+    # topo_plane = SBD.plane_fit(real_measurement.topography)
+    # norm_topo = real_measurement.topography - np.min(real_measurement.topography)
+    # norm_topo = norm_topo / (np.max(norm_topo) - np.min(norm_topo))
+    # plt.imshow(norm_topo - topo_plane)
+    # plt.show()
+
+    deconv_measurement = deconv_v1(sim_measurement)
+    plotting.slider_side_by_side(SIM_handler2.kernel, deconv_measurement.kernel, sim_measurement.density_of_states)
+    plt.imshow(sim_measurement.density_of_states[0])
     plt.show()
-    # deconv_measurement = deconv_v1(measurement)
-    plotting.plot_fft(SIM_handler2.kernel, SIM_handler2.activation_map, sim_measurement.density_of_states)
 
 
 if __name__ == '__main__':

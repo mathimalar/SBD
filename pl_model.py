@@ -17,7 +17,7 @@ loss_func = ActivationLoss(0.01)
 
 def plot_example(measurement, activation, pred_activation, idx):
     fig, ax = plt.subplots(1, 3, figsize=(9, 3), dpi=150)
-    fig.suptitle(f'Prediction')
+    fig.suptitle('Prediction')
     ax[0].set_title('Input', fontsize=12)
     ax[0].imshow(measurement[idx][0].cpu(), cmap='hot')
 
@@ -30,7 +30,6 @@ def plot_example(measurement, activation, pred_activation, idx):
     for i in range(3):
         ax[i].set_axis_off()
     plt.savefig(f'C:/Users/physicsuser/Documents/SBD/pl_predictions/Pred{idx}')
-    pass
 
 
 class QPIDataModule(pl.LightningDataModule):
@@ -50,9 +49,9 @@ class QPIDataModule(pl.LightningDataModule):
 
     def setup(self, stage=None):
         # called on every GPU
-        self.train = QPIDataSet(os.getcwd() + '/training_dataset')
-        self.val = QPIDataSet(os.getcwd() + '/validation_dataset')
-        self.test = QPIDataSet(os.getcwd() + '/testing_dataset')
+        self.train = QPIDataSet(f'{os.getcwd()}/training_dataset')
+        self.val = QPIDataSet(f'{os.getcwd()}/validation_dataset')
+        self.test = QPIDataSet(f'{os.getcwd()}/testing_dataset')
 
     def train_dataloader(self):
         return DataLoader(self.train, batch_size=self.batch_size, num_workers=0)
