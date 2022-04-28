@@ -28,21 +28,16 @@ from dataclasses import field
 
 @dataclass
 class Measurement:
-    density_of_states: np.ndarray
-    kernel_size: (int, int)
+    density_of_states: np.ndarray = None
+    kernel: np.ndarray = None
+    kernel_size: (int, int) = None
+    activation_map = None
     topography: np.ndarray = None
-
-
-@dataclass
-class DeconvolvedMeasurement:
-    kernel: np.ndarray
-    activation_map: np.ndarray
 
 
 @dataclass
 class DataHandler(ABC):
     """Represents a generic data handler."""
-
     @abstractmethod
     def get_measurement_data(self) -> Measurement:
         """Returns a measurement."""
@@ -50,46 +45,39 @@ class DataHandler(ABC):
 
 
 @dataclass
-class LabeledDataHandler(DataHandler):
-    @abstractmethod
-    def get_labels(self) -> DeconvolvedMeasurement:
-        """Returns labels for the measurement"""
-
-
-@dataclass
 class ThreeDSHandler(DataHandler):
     """DataHandler that handles .3ds files"""
     file_path: str
     kernel_size: (int, int)
-    normalize: bool = False
-    index_list: list = None
     grid: Grid = field(init=False)
 
     def __post_init__(self):
         self.grid = Grid(self.file_path)
 
-    def get_measurement_data(self) -> Measurement:
+    def get_measurement_data(self, normalize=False, index_list=None) -> Measurement:
+        """Returns the file data as a Measurement"""
         # If you chose to normalize the DoS using the current map
-        if self.normalize:
+        if normalize:
             density_of_states = np.moveaxis(
                 np.divide(self.grid.signals['LIX 1 omega (A)'], self.grid.signals['Current (A)']), -1, 0)
         else:
             density_of_states = np.moveaxis(self.grid.signals['LIX 1 omega (A)'], -1, 0)
+
         # If you only want part of the energy levels
-        if self.index_list is not None:
+        if index_list is not None:
             # Making sure all the given indexes exist in the DoS map
-            assert np.all(np.isin(self.index_list, [
+            assert np.all(np.isin(index_list, [
                 *range(np.shape(density_of_states)[0])])), 'Not all the indeces in the list provided exist.'
-            density_of_states = [density_of_states[index] for index in self.index_list]
+            density_of_states = [density_of_states[index] for index in index_list]
         return Measurement(
             density_of_states=density_of_states,
-            kernel_size=self.kernel_size,
-            topography=self.grid.signals['topo'])
+            topography=self.grid.signals['topo'],
+            kernel_size=self.kernel_size)
 
 
 @dataclass
-class SimulationHandler(LabeledDataHandler):
-    """DataHandler that handles simulated measurements."""
+class Simulation:
+    """Runs and stores simulated measurements."""
     levels: int
     measurement_size: (int, int)
     kernel_size: (int, int)
@@ -97,34 +85,26 @@ class SimulationHandler(LabeledDataHandler):
     SNR: float = 1
     lattice_structure: str = None
     index_list: list = None
-    kernel: np.ndarray = field(init=False)
-    activation_map: np.ndarray = field(init=False)
-    density_of_states: np.ndarray = field(init=False)
+    measurement: Measurement = None
 
-    def __post_init__(self):
-        self.density_of_states, self.kernel, self.activation_map = Y_factory(
+    def run(self) -> None:
+        """Runs the simulation again. Over-writes the measurement instance variable."""
+        density_of_states, kernel, activation_map = Y_factory(
             s=self.levels,
             Y_size=self.measurement_size,
             A_size=self.kernel_size,
             density=self.defect_density,
             SNR=self.SNR,
             lattice_structure=self.lattice_structure)
+        self.measurement = Measurement(density_of_states, kernel, self.kernel_size, activation_map)
 
-    def get_measurement_data(self) -> Measurement:
-        # If you only want part of the energy levels
-        if self.index_list is not None:
-            # Making sure all the given indexes exist in the DoS map
-            assert np.all(np.isin(self.index_list, [
-                *range(np.shape(self.density_of_states)[0])])), 'Not all the indeces in the list provided exist.'
-            self.density_of_states = np.array([self.density_of_states[index] for index in self.index_list])
-        return Measurement(
-            density_of_states=self.density_of_states,
-            kernel_size=self.kernel_size)
 
-    def get_labels(self) -> DeconvolvedMeasurement:
-        return DeconvolvedMeasurement(
-            kernel=self.kernel,
-            activation_map=self.activation_map)
+def deconvolve(measurement: Measurement, use_topo=False) -> tuple:
+    """Takes a measurement, deconvolves it and returns (Kernel, Activation map) tuple"""
+    X_solved = measurement_to_activation(measurement, use_topo=use_topo)
+    A_solved = measurement_to_ker(measurement, X_solved)
+
+    return A_solved, X_solved
 
 
 def deconv_v0(Y, kernel_size, l_i, l_f, alpha):
@@ -163,14 +143,6 @@ def deconv_v0(Y, kernel_size, l_i, l_f, alpha):
     A_out = crop_to_center(A_big, kernel_array)
     X_out = FISTA(sparse, A_out, X)
     return A_out, X_out
-
-
-def deconv_v1(measurement: Measurement, use_topo=False) -> DeconvolvedMeasurement:
-    """Takes a measurement, de-convolves it and returns """
-    X_solved = measurement_to_activation(measurement, use_topo=False)
-    A_solved = measurement_to_ker(measurement, X_solved)
-
-    return DeconvolvedMeasurement(A_solved, X_solved)
 
 
 def measurement_to_ker(measurement: Measurement, activation_map) -> np.ndarray:
