@@ -3,7 +3,7 @@ import matplotlib.colors as colors
 import numpy as np
 import pylops as pl
 import random
-
+import time 
 import scipy.stats
 from scipy import sparse
 from autograd.scipy.signal import convolve as aconvolve
@@ -13,7 +13,9 @@ import autograd.numpy as anp
 from numpy.linalg import norm
 from pymanopt.manifolds import Sphere
 from pymanopt import Problem
-from pymanopt.solvers import TrustRegions
+from pymanopt.optimizers.trust_regions import TrustRegions
+import pymanopt
+
 from model import ActivationNet, LISTA
 from pathlib import Path
 import torch
@@ -24,6 +26,10 @@ from nanonispy.read import Grid
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from dataclasses import field
+
+from tqdm import tqdm
+import pdb
+from multiprocessing import Pool, freeze_support
 
 
 @dataclass
@@ -158,10 +164,10 @@ def measurement_to_ker(measurement: Measurement, activation_map) -> np.ndarray:
     for i in range(level_num):
         # Taking the random guess for the 1st level
         if i == 1:
-            kernel[i] = np.array(RTRM(1e-5, activation_map, normalize_measurement(dos[i]), kernel_rnd)[0])
+            kernel[i] = np.array(RTRM(1e-5, activation_map, normalize_measurement(dos[i]), kernel_rnd).point)
         # Using the i-1 kernel as 1st guess for the i-th kernel
         else:
-            kernel[i] = np.array(RTRM(1e-5, activation_map, normalize_measurement(dos[i]), kernel[i - 1])[0])
+            kernel[i] = np.array(RTRM(1e-5, activation_map, normalize_measurement(dos[i]), kernel[i - 1]).point)
 
     # Cropping and normalizing
     kernel = crop_to_center(kernel, measurement.kernel_size)
@@ -172,7 +178,7 @@ def measurement_to_activation(measurement: Measurement, model='lista', use_topo=
     """
     Takes in a measurement object (and optionally use_topo flag) and returns the recovered activation map
     """
-    dos = measurement.topography if use_topo else measurement.density_of_states
+    dos = measurement #.topography if use_topo else measurement.density_of_states
     assert np.ndim(dos) in [2, 3], f'Your measurement has {np.ndim(dos)} dimensions'
     # Loading the selected network
     if model == 'cnn':
@@ -251,13 +257,14 @@ def RTRM(lam_in, X_in, Y, A0, mingradnorm=5e-7, maxtime=2 * 60, verbose=0):
     s, m1, m2 = np.shape(A_in)
     sphere = Sphere(s, m1, m2)
 
-    # 2. Defining the problem
+    # 2. Defining the problem   
+    @pymanopt.function.autograd(sphere)
     def cost(A): return cost_fun(lam_in, A, X_in, Y_in)
 
     problem = Problem(manifold=sphere, cost=cost)
     # 3. Solving
-    solver = TrustRegions(mingradnorm=mingradnorm, maxtime=maxtime, logverbosity=verbose)
-    A_out = solver.solve(problem, x=A_in)
+    solver = TrustRegions() # mingradnorm=mingradnorm, maxtime=maxtime, logverbosity=verbose)
+    A_out = solver.run(problem, initial_point=A_in)
     return A_out
 
 
@@ -342,6 +349,8 @@ def kernel_factory(s: int, m1: int, m2: int):
     This function produces a set of s random m1 by m2 kernels
     """
     m_max = max(m1, m2)
+    m_max = int(m_max.item(0)) if type(m_max) is np.float64 else m_max
+    # tqdm.write(str(type(m_max)))
     A = np.zeros([s, m_max, m_max], dtype=float)
     symmetry = random.choice([2, 3, 4, 6])
     half_sym = np.floor(symmetry / 2).astype('int')
@@ -488,7 +497,11 @@ def crop_to_center(M, box_shape):
     :param box_shape: (m1, m2) or (s, m1, m2)
     :return: dim=3 matrix
     """
+
     if len(box_shape) == 3:
+        # print(str(np.shape(M)))
+        # pdb.set_trace()
+        M = M.point
         diff = np.subtract(np.shape(M)[1:], box_shape[1:])
         gap = diff // 2
         return M[:, gap[0]:gap[0] + box_shape[1], gap[1]:gap[1] + box_shape[2]]
@@ -504,29 +517,44 @@ def recovery_error(A_guess, A_true):
     return (2 / np.pi) * np.arccos(np.round(abs(np.dot(A_guess.flatten(), A_true.flatten())), 10))
 
 
-def benchmark(model, defect_density_range, kernel_size_range, SNR=2, samples=20):
+def job(model, i, defect_density, j, kernel_size, samples, SNR, error_matrix):
+    print(i,j, "started")
+    t = time.time()
+    errors = np.zeros(samples)
+    for k, sample in enumerate(range(samples)):
+        # print(i,j,k)
+        Y, A, X = Y_factory(1, (256, 256), (kernel_size, kernel_size), defect_density, SNR)
+
+        X_guess = measurement_to_activation(Y, model=model)
+        kernel_size = kernel_size if type(kernel_size) is int else int(kernel_size.item(0))
+        A_rand = np.random.normal(0, 1, (1, 2 * kernel_size, 2 * kernel_size))
+        A_rand = A_rand / np.linalg.norm(A_rand)
+
+        A_solved = RTRM(1e-5, X_guess, Y, A_rand)
+        A_solved = crop_to_center(A_solved, (1, kernel_size, kernel_size))
+        A_solved = A_solved / np.linalg.norm(A_solved)  # norm = 1
+
+        errors[sample] = recovery_error(A_solved[0], A[0])
+    error_matrix[i, j] = np.median(errors)
+    print(i,j, "finished ", float(time.time() - t)/60.0)
+    
+
+def benchmark(model, defect_density_range, kernel_size_range, SNR=2, samples=2):
     """
     Returns a recovery error matrix
     """
     error_matrix = np.zeros([len(defect_density_range), len(kernel_size_range)])
-    for i, defect_density in enumerate(tqdm(defect_density_range)):
-        print(f'loop {i + 1} out of {len(defect_density_range)} \n')
+    args = []
+    for i, defect_density in enumerate(defect_density_range):
+        # print(f'loop {i + 1} out of {len(defect_density_range)} \n')
         for j, kernel_size in enumerate(kernel_size_range):
-            errors = np.zeros(samples)
-            for sample in range(samples):
-                Y, A, X = Y_factory(1, (256, 256), (kernel_size, kernel_size), defect_density, SNR)
-
-                X_guess = measurement_to_activation(Y, model=model)
-
-                A_rand = np.random.normal(0, 1, (1, 2 * kernel_size, 2 * kernel_size))
-                A_rand = A_rand / np.linalg.norm(A_rand)
-
-                A_solved = RTRM(1e-5, X_guess, Y, A_rand)
-                A_solved = crop_to_center(A_solved, (1, kernel_size, kernel_size))
-                A_solved = A_solved / np.linalg.norm(A_solved)  # norm = 1
-
-                errors[sample] = recovery_error(A_solved[0], A[0])
-            error_matrix[i, j] = np.median(errors)
+            args.append((model, i,defect_density,j,kernel_size, samples,SNR, error_matrix))
+            
+    # with Pool(processes=8) as pool:
+    #     pool.starmap(job, args)
+    for item in args:
+        job(*item)
+    
     return error_matrix
 
 

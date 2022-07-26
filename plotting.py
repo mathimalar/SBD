@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, Button
 import numpy as np
@@ -8,7 +10,7 @@ import matplotlib.colors as colors
 
 def plot_dos(dos) -> None:
     """Plots a 3D matrix with a slider for dim1."""
-    matplotlib.use('TkAgg')
+    # matplotlib.use('TkAgg')
     init_idx = 0
     fig, ax = plt.subplots()
     img = plt.imshow(dos[init_idx], cmap='hot')
@@ -55,7 +57,7 @@ def slider_five_plots(A, X, Y, init_idx: int = 0) -> None:
     middle_Y = np.shape(Y)[1]//2, np.shape(Y)[2]//2
     assert init_idx in range(max_idx+1), 'The initial value is out of bounds.'
 
-    matplotlib.use('TkAgg')
+    # matplotlib.use('TkAgg')
 
     A_fft = np.abs(np.fft.fftshift(np.fft.fft2(A, s=np.shape(Y)[1:])))
     Y_fft = np.abs(np.fft.fftshift(np.fft.fft2(SBD.normalize_measurement(Y), s=np.shape(Y)[1:])))
@@ -142,7 +144,7 @@ def slider_side_by_side(A_true, A_guess, Y, init_idx: int = 0) -> None:
     middle_Y = np.shape(Y)[1] // 2, np.shape(Y)[2] // 2
     assert init_idx in range(max_idx+1), 'The initial value is out of bounds.'
 
-    matplotlib.use('TkAgg')
+    # matplotlib.use('TkAgg')
     # Taking the |FT(map)|
     Y_fft = np.abs(np.fft.fftshift(np.fft.fft2(Y, s=np.shape(Y)[1:])))
     A_true_fft = np.abs(np.fft.fftshift(np.fft.fft2(A_true, s=np.shape(Y)[1:])))
@@ -213,10 +215,11 @@ def slider_side_by_side(A_true, A_guess, Y, init_idx: int = 0) -> None:
 
 
 def plot_benchmark(e_matrix, d_range, k_range) -> None:
+    matplotlib.use('Agg')
     D, K = np.meshgrid(d_range, k_range / 256)
     im = plt.pcolormesh(D, K, e_matrix, cmap='jet', shading='auto')
     cb = plt.colorbar()
-    cb.set_label(r'$\epsilon$', loc='bottom')
+    # cb.set_label(r'$\epsilon$', loc='bottom')
     plt.xlabel('Defect density')
     plt.ylabel(r'Kernel relative size $m/n$')
     plt.clim(0, 1)

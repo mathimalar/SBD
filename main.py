@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('Agg')
 from matplotlib import pyplot as plt
 import numpy as np
 import SBD
@@ -24,8 +26,8 @@ def test_benchmark(load=False) -> bool:
     """
     Uses the benchmark function from SBD and checks if it returns positive numbers within [0,1]
     """
-    bench_info = BenchmarkInfo(sample_num=20,
-                               resolution=20,
+    bench_info = BenchmarkInfo(sample_num=2,
+                               resolution=5,
                                max_defect_density=0.5,
                                min_defect_density=0.5 * (10 ** -4),
                                max_kernel_size=62,
@@ -37,7 +39,7 @@ def test_benchmark(load=False) -> bool:
                                      defect_density_range=bench_info.defect_range(),
                                      kernel_size_range=bench_info.kernel_range(),
                                      samples=bench_info.sample_num)
-        error_matrix = np.save(f'benchmark_{bench_info.resolution}_{bench_info.sample_num}', error_matrix)
+        np.save(f'benchmark_{bench_info.resolution}_{bench_info.sample_num}', error_matrix)
     plotting.plot_benchmark(error_matrix, bench_info.defect_range(), bench_info.kernel_range())
     return np.all(error_matrix >= 0) and np.all(error_matrix <= 1)
 
@@ -68,18 +70,17 @@ class BenchmarkInfo:
 
 
 def main():
-    # An example list of files to analyze
-    three_ds_paths = [r'T:\LT_data\TaAs\2015-12-08\Grid Spectroscopy001.3ds',
-                      r'T:\LT_data\TaAs\2016-01-01\Grid Spectroscopy002.3ds',
-                      r'T:\LT_data\TaAs\2016-01-04\Grid Spectroscopy002.3ds',
-                      r'T:\LT_data\Copper\2019-12-22\Grid Spectroscopy002.3ds',
-                      r'T:\LT_data\Copper\2014-03-20\Grid Spectroscopy002.3ds']
-
+    # # An example list of files to analyze
+    # three_ds_paths = [r'T:\LT_data\TaAs\2015-12-08\Grid Spectroscopy001.3ds',
+    #                   r'T:\LT_data\TaAs\2016-01-01\Grid Spectroscopy002.3ds',
+    #                   r'T:\LT_data\TaAs\2016-01-04\Grid Spectroscopy002.3ds',
+    #                   r'T:\LT_data\Copper\2019-12-22\Grid Spectroscopy002.3ds',
+    #                   r'T:\LT_data\Copper\2014-03-20\Grid Spectroscopy002.3ds']
     kernel_size = (32, 32)  # Required argument to deconvolve both simulated and real measurements.
 
     # Option 1: Loading data from files
-    DS_handler = ThreeDSHandler(three_ds_paths[4], kernel_size)
-    real_measurement = DS_handler.get_measurement_data()
+    # DS_handler = ThreeDSHandler(three_ds_paths[4], kernel_size)
+    # real_measurement = DS_handler.get_measurement_data()
 
     # Option 2: Using a simulation
     measurement_size = (300, 300)
@@ -100,7 +101,8 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    test_benchmark()
+    # main()
 
 ## The commented code below was used to test functions as I wrote them ##
 # Testing max_submatrix_pos
