@@ -1,5 +1,4 @@
 import matplotlib
-matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, Button
 import numpy as np
@@ -215,7 +214,7 @@ def slider_side_by_side(A_true, A_guess, Y, init_idx: int = 0) -> None:
 
 
 def plot_benchmark(e_matrix, d_range, k_range) -> None:
-    matplotlib.use('Agg')
+    
     D, K = np.meshgrid(d_range, k_range / 256)
     im = plt.pcolormesh(D, K, e_matrix, cmap='jet', shading='auto')
     cb = plt.colorbar()

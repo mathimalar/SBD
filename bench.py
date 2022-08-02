@@ -21,11 +21,11 @@ def test_benchmark(load=False) -> bool:
     """
     Uses the benchmark function from SBD and checks if it returns positive numbers within [0,1]
     """
-    bench_info = BenchmarkInfo(sample_num=1,
-                               resolution=2,
+    bench_info = BenchmarkInfo(sample_num=2,
+                               resolution=6,
                                max_defect_density=0.1,
                                min_defect_density=0.5 * (10 ** -4),
-                               max_kernel_size=32,
+                               max_kernel_size=16,
                                min_kernel_size=8)
     if load:
         error_matrix = np.load(f'benchmark_{bench_info.resolution}_{bench_info.sample_num}.npy')
@@ -34,7 +34,9 @@ def test_benchmark(load=False) -> bool:
                                      defect_density_range=bench_info.defect_range(),
                                      kernel_size_range=bench_info.kernel_range(),
                                      samples=bench_info.sample_num)
-        np.save(f'benchmark_{bench_info.resolution}_{bench_info.sample_num}', error_matrix)
+        np.save(f'benchmark_{bench_info.resolution}_{bench_info.sample_num}_matrix', error_matrix)
+        np.save(f'benchmark_{bench_info.resolution}_{bench_info.sample_num}_def_den_range', bench_info.defect_range())
+        np.save(f'benchmark_{bench_info.resolution}_{bench_info.sample_num}_ker_siz_range', bench_info.kernel_range())
     plotting.plot_benchmark(error_matrix, bench_info.defect_range(), bench_info.kernel_range())
     return np.all(error_matrix >= 0) and np.all(error_matrix <= 1)
 

@@ -178,7 +178,7 @@ def measurement_to_activation(measurement: Measurement, model='lista', use_topo=
     """
     Takes in a measurement object (and optionally use_topo flag) and returns the recovered activation map
     """
-    dos = measurement #.topography if use_topo else measurement.density_of_states
+    dos = measurement.density_of_states #.topography if use_topo else measurement.density_of_states
     assert np.ndim(dos) in [2, 3], f'Your measurement has {np.ndim(dos)} dimensions'
     # Loading the selected network
     if model == 'cnn':
