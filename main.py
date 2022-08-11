@@ -1,5 +1,4 @@
 import matplotlib
-matplotlib.use('Agg')
 from matplotlib import pyplot as plt
 import numpy as np
 import SBD
@@ -41,8 +40,8 @@ def main():
 
 
 if __name__ == '__main__':
-    #bench.test_benchmark()
-     main()
+    bench.test_benchmark()
+    # main()
 
 ## The commented code below was used to test functions as I wrote them ##
 # Testing max_submatrix_pos

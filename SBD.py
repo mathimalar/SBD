@@ -178,22 +178,22 @@ def measurement_to_activation(measurement: Measurement, model='lista', use_topo=
     """
     Takes in a measurement object (and optionally use_topo flag) and returns the recovered activation map
     """
-    dos = measurement.density_of_states #.topography if use_topo else measurement.density_of_states
+    dos = measurement if type(measurement) is np.ndarray else measurement.density_of_states #.topography if use_topo else measurement.density_of_states
     assert np.ndim(dos) in [2, 3], f'Your measurement has {np.ndim(dos)} dimensions'
     # Loading the selected network
     if model == 'cnn':
         net = ActivationNet()
-        trained_model_path = Path('trained_model_norm.pt', map_location=torch.device('cpu'))
+        trained_model_path = Path('trained_model_norm.pt', map_location=torch.device('cuda'))
     elif model == 'lista':
         net = LISTA(5, iter_num=10)
-        trained_model_path = Path('trained_lista_5layers.pt', map_location=torch.device('cpu'))
+        trained_model_path = Path('trained_lista_5layers.pt', map_location=torch.device('cuda'))
     if trained_model_path.is_file():
         net.load_state_dict(torch.load(trained_model_path))
-        print('Loaded parameters from your trained model.')
+        # print('Loaded parameters from your trained model.')
     else:
         print('No trained model detected.')
     net.eval()
-    net.cpu()
+    net.cuda()
     net.double()
     mes_shape = np.shape(dos)
 
@@ -204,8 +204,8 @@ def measurement_to_activation(measurement: Measurement, model='lista', use_topo=
         for level in range(mes_shape[0]):
             temp_mes = dos[level]
             temp_mes = temp_mes[np.newaxis, :, :]
-            measurement_tensor = ndarray_to_tensor(temp_mes)
-            temp_act = net(measurement_tensor)[0][0].data.numpy()
+            measurement_tensor = ndarray_to_tensor(temp_mes).cuda()
+            temp_act = net(measurement_tensor)[0][0].cpu().data.numpy()
 
             # This next bit is a filter to zero out all the small numbers in the map
             # temp_act[temp_act < np.max(temp_act) / 100] = 0
@@ -263,7 +263,7 @@ def RTRM(lam_in, X_in, Y, A0, mingradnorm=5e-7, maxtime=2 * 60, verbose=0):
 
     problem = Problem(manifold=sphere, cost=cost)
     # 3. Solving
-    solver = TrustRegions() # mingradnorm=mingradnorm, maxtime=maxtime, logverbosity=verbose)
+    solver = TrustRegions(verbosity=0, log_verbosity=0) # mingradnorm=mingradnorm, maxtime=maxtime, logverbosity=verbose)
     A_out = solver.run(problem, initial_point=A_in)
     return A_out
 
